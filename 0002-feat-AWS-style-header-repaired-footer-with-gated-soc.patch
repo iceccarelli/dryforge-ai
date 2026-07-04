@@ -1,0 +1,478 @@
+From 408a6c2094edefd993b72cbdee3b5b3878781ea3 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 4 Jul 2026 15:09:49 +0000
+Subject: [PATCH] feat: AWS-style header, repaired footer with gated social
+ bar, pulsating chatbot, responsive polish
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Header (aws.amazon.com pattern):
+- Compact 59px dark utility bar: logo + flat nav left; Contact Us | divider |
+  Sign In | orange primary CTA right — the AWS 'Create an account' layout
+- Orange underline hover on nav items; Clerk auth UI still conditional
+- Mobile: dark slide-down panel with chevron rows and full-width CTAs
+
+Footer repairs:
+- Fixed broken grid (empty columns) with responsive 2/3/6-col layout
+- All links now point to routes/anchors that actually exist (previous
+  footer linked 8 nonexistent page anchors and 3 dead /legal routes)
+- 9-platform social bar (LinkedIn, X, YouTube, Instagram, Facebook,
+  TikTok, Discord, GitHub, Reddit) gated behind per-network 'enabled'
+  flags: flip to true when each account is created; disabled entries
+  never render, so no dead social links can ship
+
+Chatbot:
+- AWS-style pulsating attention ring + notification dot on the closed FAB
+- Auto-scrolls to newest message and typing indicator
+- Mobile-safe panel: full-width minus margins on phones, dvh-capped height
+
+Responsive:
+- h1 tracking relaxed and h2 scaled on <640px screens
+- Button padding tuned for narrow-viewport tap targets
+- Header/footer paddings adapted for small screens
+---
+ app/components/FloatingChatbot.tsx |  26 +++--
+ app/components/Footer.tsx          |  91 ++++++++++++-----
+ app/components/Header.tsx          | 155 +++++++++++++++++------------
+ app/globals.css                    |   9 ++
+ 4 files changed, 186 insertions(+), 95 deletions(-)
+
+diff --git a/app/components/FloatingChatbot.tsx b/app/components/FloatingChatbot.tsx
+index bdb6271..6a37af2 100644
+--- a/app/components/FloatingChatbot.tsx
++++ b/app/components/FloatingChatbot.tsx
+@@ -1,6 +1,6 @@
+ "use client";
+ 
+-import React, { useState } from "react";
++import React, { useEffect, useRef, useState } from "react";
+ import { MessageCircle, X, Send, Bot } from "lucide-react";
+ import { motion, AnimatePresence } from "framer-motion";
+ 
+@@ -26,6 +26,11 @@ export default function FloatingChatbot() {
+   ]);
+   const [inputValue, setInputValue] = useState("");
+   const [isTyping, setIsTyping] = useState(false);
++  const messagesEndRef = useRef<HTMLDivElement>(null);
++
++  useEffect(() => {
++    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
++  }, [messages, isTyping]);
+ 
+   const getResponse = (text: string): string => {
+     const t = text.toLowerCase();
+@@ -65,13 +70,21 @@ export default function FloatingChatbot() {
+ 
+   return (
+     <>
+-      {/* Floating Action Button */}
++      {/* Floating Action Button — pulsating attention ring while closed */}
+       <button
+         onClick={() => setIsOpen(!isOpen)}
+-        className="fixed bottom-6 right-6 z-[60] flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0F172A] text-white shadow-[0_10px_40px_rgb(15,23,42,0.35)] hover:bg-slate-800 active:scale-[0.96] transition-all"
+-        aria-label="Open DryForge site assistant"
++        className="fixed bottom-5 right-5 sm:bottom-6 sm:right-6 z-[60] flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0F172A] text-white shadow-[0_10px_40px_rgb(15,23,42,0.35)] hover:bg-slate-800 active:scale-[0.96] transition-all"
++        aria-label={isOpen ? "Close DryForge site assistant" : "Open DryForge site assistant"}
+       >
+-        {isOpen ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
++        {!isOpen && (
++          <>
++            <span className="absolute inset-0 rounded-2xl bg-[#F97316] opacity-40 animate-ping [animation-duration:2.2s]" aria-hidden="true" />
++            <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-[#F97316] ring-2 ring-[#0F172A]" aria-hidden="true">
++              <span className="absolute inset-0 rounded-full bg-[#F97316] animate-ping" />
++            </span>
++          </>
++        )}
++        <span className="relative">{isOpen ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}</span>
+       </button>
+ 
+       <AnimatePresence>
+@@ -81,7 +94,7 @@ export default function FloatingChatbot() {
+             animate={{ opacity: 1, y: 0, scale: 1 }}
+             exit={{ opacity: 0, y: 18, scale: 0.985 }}
+             transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+-            className="fixed bottom-[92px] right-6 z-[70] flex h-[490px] w-full max-w-[370px] flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
++            className="fixed bottom-[88px] right-4 left-4 sm:left-auto sm:right-6 z-[70] flex h-[min(490px,calc(100dvh-120px))] w-auto sm:w-full sm:max-w-[370px] flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
+           >
+             {/* Header */}
+             <div className="flex items-center justify-between bg-[#0F172A] px-5 py-4 text-white">
+@@ -113,6 +126,7 @@ export default function FloatingChatbot() {
+                   <Bot className="h-3.5 w-3.5 text-[#F97316]" /> Forge is typing...
+                 </div>
+               )}
++              <div ref={messagesEndRef} />
+             </div>
+ 
+             {/* Quick Replies */}
+diff --git a/app/components/Footer.tsx b/app/components/Footer.tsx
+index fd3c64c..22194c0 100644
+--- a/app/components/Footer.tsx
++++ b/app/components/Footer.tsx
+@@ -1,25 +1,43 @@
+ import Link from "next/link";
+-import { Mail } from "lucide-react";
++import {
++  Mail, Linkedin, Twitter, Youtube, Instagram, Facebook,
++  MessageCircle, Github, Users, Music2,
++} from "lucide-react";
++
++/**
++ * Social accounts — the 9 highest-reach platforms for this niche.
++ * IMPORTANT: `enabled` stays false until the account actually exists.
++ * Flip it to true after creating each profile; disabled entries never
++ * render, so the site can never ship a dead social link.
++ */
++const socialLinks = [
++  { icon: Linkedin, href: "https://linkedin.com/company/dryforge", label: "LinkedIn", enabled: false },
++  { icon: Twitter, href: "https://x.com/dryforge", label: "X (Twitter)", enabled: false },
++  { icon: Youtube, href: "https://youtube.com/@dryforge", label: "YouTube", enabled: false },
++  { icon: Instagram, href: "https://instagram.com/dryforge", label: "Instagram", enabled: false },
++  { icon: Facebook, href: "https://facebook.com/dryforge", label: "Facebook", enabled: false },
++  { icon: Music2, href: "https://tiktok.com/@dryforge", label: "TikTok", enabled: false },
++  { icon: MessageCircle, href: "https://discord.gg/dryforge", label: "Discord", enabled: false },
++  { icon: Github, href: "https://github.com/dryforge", label: "GitHub", enabled: false },
++  { icon: Users, href: "https://reddit.com/r/dryforge", label: "Reddit", enabled: false },
++];
+ 
+ const footerLinks = {
+   Product: [
+-    { label: "Robots & Fleet", href: "/products" },
+-    { label: "RaaS Platform", href: "/pricing" },
+-    { label: "Data & Analytics", href: "/products#data" },
+-    { label: "Integrations", href: "/products#integrations" },
++    { label: "Robots (Design Spec)", href: "/products" },
++    { label: "DryForge OS Platform", href: "/products" },
++    { label: "Interface Demo", href: "/dashboard" },
++    { label: "Target Pricing", href: "/pricing" },
+   ],
+   Solutions: [
+-    { label: "Drywall Contractors", href: "/solutions#contractors" },
+-    { label: "General Contractors", href: "/solutions#gc" },
+-    { label: "Enterprise & GCs", href: "/enterprise" },
+-    { label: "Ontario Housing", href: "/solutions#ontario" },
++    { label: "Drywall Contractors", href: "/solutions" },
++    { label: "General Contractors", href: "/solutions" },
++    { label: "Enterprise & Developers", href: "/enterprise" },
+   ],
+   Resources: [
+-    { label: "Documentation", href: "/resources" },
+-    { label: "Case Studies", href: "/resources#cases" },
+-    { label: "ROI Calculator", href: "/#roi-calculator" },
+-    { label: "Blog & Insights", href: "/resources#blog" },
+-    { label: "Support", href: "/resources#support" },
++    { label: "ROI Planning Model", href: "/#roi-calculator" },
++    { label: "Pilot Program", href: "/#contact" },
++    { label: "All Resources", href: "/resources" },
+   ],
+   Company: [
+     { label: "Enterprise Program", href: "/enterprise" },
+@@ -28,19 +46,21 @@ const footerLinks = {
+ };
+ 
+ export default function Footer() {
++  const liveSocials = socialLinks.filter((s) => s.enabled);
++
+   return (
+     <footer className="bg-[#0F172A] text-slate-300 border-t border-slate-800">
+-      <div className="mx-auto max-w-7xl px-6 pt-16 pb-12">
+-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-x-8 gap-y-12">
++      <div className="mx-auto max-w-7xl px-4 sm:px-6 pt-14 sm:pt-16 pb-10 sm:pb-12">
++        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-6 sm:gap-x-8 gap-y-10">
+           {/* Logo + tagline */}
+-          <div className="col-span-2 md:col-span-3 lg:col-span-1">
+-            <Link href="/" className="flex items-center gap-2.5 mb-4">
++          <div className="col-span-2 sm:col-span-3 lg:col-span-2 lg:pr-10">
++            <Link href="/" className="inline-flex items-center gap-2.5 mb-4">
+               <div className="h-8 w-8 rounded-lg bg-white flex items-center justify-center">
+                 <span className="text-[#0F172A] font-bold text-xl tracking-tighter">DF</span>
+               </div>
+               <span className="font-bold text-2xl text-white tracking-[-1px]">DRYFORGE</span>
+             </Link>
+-            <p className="text-sm text-slate-400 max-w-[220px]">
++            <p className="text-sm text-slate-400 max-w-[260px]">
+               Building robot-assisted drywall finishing as a service for GTA contractors. Pre-launch — founding pilot partners wanted.
+             </p>
+           </div>
+@@ -51,7 +71,7 @@ export default function Footer() {
+               <ul className="space-y-3 text-sm">
+                 {links.map((link) => (
+                   <li key={link.label}>
+-                    <Link href={link.href} className="footer-link hover:text-white transition-colors">
++                    <Link href={link.href} className="footer-link text-slate-400 hover:text-white transition-colors">
+                       {link.label}
+                     </Link>
+                   </li>
+@@ -61,10 +81,33 @@ export default function Footer() {
+           ))}
+         </div>
+ 
+-        <div className="mt-16 pt-8 border-t border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-6">
+-          <a href="mailto:pilot@dryforge.ai" className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors">
+-            <Mail className="h-4 w-4" /> pilot@dryforge.ai
+-          </a>
++        {/* Bottom bar: contact, socials, legal line */}
++        <div className="mt-14 pt-8 border-t border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-6">
++          <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
++            <a href="mailto:pilot@dryforge.ai" className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors">
++              <Mail className="h-4 w-4" /> pilot@dryforge.ai
++            </a>
++
++            {liveSocials.length > 0 && (
++              <div className="flex items-center gap-4 flex-wrap">
++                {liveSocials.map((social) => {
++                  const Icon = social.icon;
++                  return (
++                    <a
++                      key={social.label}
++                      href={social.href}
++                      target="_blank"
++                      rel="noopener noreferrer"
++                      className="text-slate-400 hover:text-white transition-colors p-1"
++                      aria-label={social.label}
++                    >
++                      <Icon className="h-4 w-4" />
++                    </a>
++                  );
++                })}
++              </div>
++            )}
++          </div>
+ 
+           <div className="text-xs text-slate-500 flex flex-wrap gap-x-4 gap-y-1">
+             <span>© {new Date().getFullYear()} DryForge. All rights reserved.</span>
+diff --git a/app/components/Header.tsx b/app/components/Header.tsx
+index 8e684cb..6e38739 100644
+--- a/app/components/Header.tsx
++++ b/app/components/Header.tsx
+@@ -2,7 +2,7 @@
+ 
+ import React, { useState } from "react";
+ import Link from "next/link";
+-import { Menu, X, Zap } from "lucide-react";
++import { Menu, X, Zap, ChevronRight } from "lucide-react";
+ import { SignInButton, SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
+ import { motion, AnimatePresence } from "framer-motion";
+ 
+@@ -22,78 +22,79 @@ export default function Header() {
+   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+ 
+   return (
+-    <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/95 backdrop-blur-lg">
+-      <div className="mx-auto max-w-7xl px-6">
+-        <div className="flex h-20 items-center justify-between">
+-          {/* Logo - Ruthless & Clean */}
+-          <Link href="/" className="flex items-center gap-3 group">
+-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#0F172A] text-white">
+-              <Zap className="h-5 w-5" />
+-            </div>
+-            <div className="flex flex-col">
+-              <span className="font-bold text-2xl tracking-[-1.5px] text-[#0F172A] group-hover:text-[#F97316] transition-colors">DRYFORGE</span>
+-              <span className="text-[10px] text-slate-500 -mt-1.5 tracking-[2px] font-mono">AUTONOMOUS SYSTEMS</span>
+-            </div>
+-          </Link>
++    <header className="sticky top-0 z-50 w-full bg-[#0F172A] text-white shadow-[0_1px_0_rgba(255,255,255,0.08)]">
++      {/* Primary bar — AWS-style: compact, dark, information-dense */}
++      <div className="mx-auto max-w-7xl px-4 sm:px-6">
++        <div className="flex h-[59px] items-center justify-between gap-4">
++          {/* Logo */}
++          <div className="flex items-center gap-6 lg:gap-8 min-w-0">
++            <Link href="/" className="flex items-center gap-2.5 shrink-0 group" aria-label="DryForge home">
++              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#F97316] text-white">
++                <Zap className="h-4.5 w-4.5" />
++              </div>
++              <span className="font-bold text-lg tracking-[-0.5px] group-hover:text-[#F97316] transition-colors">DRYFORGE</span>
++            </Link>
+ 
+-          {/* Desktop Navigation */}
+-          <nav className="hidden lg:flex items-center gap-9 text-sm font-medium">
+-            {navLinks.map((link) => (
+-              <Link
+-                key={link.href}
+-                href={link.href}
+-                className="nav-link text-slate-700 hover:text-[#0F172A] transition-colors"
+-              >
+-                {link.label}
+-              </Link>
+-            ))}
+-          </nav>
++            {/* Desktop nav — flat text links, AWS-style */}
++            <nav className="hidden lg:flex items-center" aria-label="Main">
++              {navLinks.map((link) => (
++                <Link
++                  key={link.href}
++                  href={link.href}
++                  className="relative px-3.5 py-[19px] text-[13.5px] font-medium text-slate-300 hover:text-white transition-colors after:absolute after:bottom-0 after:left-3.5 after:right-3.5 after:h-[2px] after:bg-[#F97316] after:scale-x-0 hover:after:scale-x-100 after:transition-transform after:origin-left"
++                >
++                  {link.label}
++                </Link>
++              ))}
++            </nav>
++          </div>
+ 
+-          {/* Right side actions */}
+-          <div className="flex items-center gap-3">
+-            {/* Talk to an Expert - High intent CTA */}
+-            <Link 
+-              href="#contact" 
+-              className="hidden md:inline-flex btn-ghost text-sm font-semibold text-slate-700 hover:text-[#0F172A]"
++          {/* Right utility cluster — AWS pattern: text links | divider | auth | orange CTA */}
++          <div className="flex items-center gap-1 sm:gap-3">
++            <Link
++              href="/#contact"
++              className="hidden md:inline-block px-3 py-2 text-[13.5px] font-medium text-slate-300 hover:text-white transition-colors"
+             >
+-              Talk to an Expert
++              Contact Us
+             </Link>
+ 
+-            {/* Auth (only rendered when Clerk is configured) */}
++            <span className="hidden md:block h-5 w-px bg-white/20" aria-hidden="true" />
++
+             {clerkEnabled && (
+               <>
+-            <SignedOut>
+-              <SignInButton mode="modal">
+-                <button className="btn-secondary text-sm px-5 py-2.5 hidden sm:inline-flex">
+-                  Log in
+-                </button>
+-              </SignInButton>
+-            </SignedOut>
+-            <SignedIn>
+-              <UserButton 
+-                appearance={{
+-                  elements: {
+-                    avatarBox: "h-9 w-9 rounded-full ring-1 ring-slate-200",
+-                  }
+-                }}
+-              />
+-            </SignedIn>
++                <SignedOut>
++                  <SignInButton mode="modal">
++                    <button className="hidden sm:inline-block px-3 py-2 text-[13.5px] font-medium text-slate-300 hover:text-white transition-colors">
++                      Sign In
++                    </button>
++                  </SignInButton>
++                </SignedOut>
++                <SignedIn>
++                  <UserButton
++                    appearance={{
++                      elements: {
++                        avatarBox: "h-8 w-8 rounded-full ring-1 ring-white/25",
++                      },
++                    }}
++                  />
++                </SignedIn>
+               </>
+             )}
+ 
+-            {/* Primary CTA */}
+-            <Link 
+-              href="/pricing" 
+-              className="btn-primary text-sm px-6 py-2.5 hidden sm:inline-flex"
++            {/* Primary CTA — the "Create an AWS account" slot */}
++            <Link
++              href="/#contact"
++              className="hidden sm:inline-flex items-center rounded-[4px] bg-[#F97316] px-4 py-[7px] text-[13.5px] font-semibold text-white hover:bg-[#EA580C] transition-colors"
+             >
+               Apply for Pilot
+             </Link>
+ 
+-            {/* Mobile Menu Toggle */}
++            {/* Mobile menu toggle */}
+             <button
+               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+-              className="lg:hidden p-2.5 text-slate-700 hover:bg-slate-100 rounded-lg"
+-              aria-label="Toggle menu"
++              className="lg:hidden p-2 -mr-1 text-slate-300 hover:text-white hover:bg-white/10 rounded-md transition-colors"
++              aria-label="Toggle navigation menu"
++              aria-expanded={mobileMenuOpen}
+             >
+               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+             </button>
+@@ -101,31 +102,55 @@ export default function Header() {
+         </div>
+       </div>
+ 
+-      {/* Mobile Menu */}
++      {/* Mobile menu — dark panel, AWS-style flat list */}
+       <AnimatePresence>
+         {mobileMenuOpen && (
+           <motion.div
+             initial={{ opacity: 0, height: 0 }}
+             animate={{ opacity: 1, height: "auto" }}
+             exit={{ opacity: 0, height: 0 }}
+-            className="lg:hidden border-t border-slate-200 bg-white"
++            transition={{ duration: 0.18 }}
++            className="lg:hidden overflow-hidden border-t border-white/10 bg-[#0F172A]"
+           >
+-            <div className="px-6 py-8 flex flex-col gap-6 text-lg font-medium">
++            <nav className="px-4 py-3 flex flex-col" aria-label="Mobile">
+               {navLinks.map((link) => (
+                 <Link
+                   key={link.href}
+                   href={link.href}
+-                  className="text-slate-700 hover:text-[#F97316]"
++                  className="flex items-center justify-between py-3.5 text-[15px] font-medium text-slate-200 hover:text-white border-b border-white/5"
+                   onClick={() => setMobileMenuOpen(false)}
+                 >
+                   {link.label}
++                  <ChevronRight className="h-4 w-4 text-slate-500" />
+                 </Link>
+               ))}
+-              <div className="pt-4 border-t flex flex-col gap-3">
+-                <Link href="#contact" className="btn-secondary justify-center">Talk to an Expert</Link>
+-                <Link href="/pricing" className="btn-primary justify-center">Apply for Pilot</Link>
++              <Link
++                href="/#contact"
++                className="flex items-center justify-between py-3.5 text-[15px] font-medium text-slate-200 hover:text-white border-b border-white/5"
++                onClick={() => setMobileMenuOpen(false)}
++              >
++                Contact Us
++                <ChevronRight className="h-4 w-4 text-slate-500" />
++              </Link>
++              <div className="py-4 flex flex-col gap-2.5">
++                <Link
++                  href="/#contact"
++                  onClick={() => setMobileMenuOpen(false)}
++                  className="inline-flex justify-center rounded-[4px] bg-[#F97316] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#EA580C] transition-colors"
++                >
++                  Apply for Pilot
++                </Link>
++                {clerkEnabled && (
++                  <SignedOut>
++                    <SignInButton mode="modal">
++                      <button className="inline-flex justify-center rounded-[4px] border border-white/25 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/10 transition-colors">
++                        Sign In
++                      </button>
++                    </SignInButton>
++                  </SignedOut>
++                )}
+               </div>
+-            </div>
++            </nav>
+           </motion.div>
+         )}
+       </AnimatePresence>
+diff --git a/app/globals.css b/app/globals.css
+index 881938e..ba58667 100644
+--- a/app/globals.css
++++ b/app/globals.css
+@@ -290,5 +290,14 @@ a:focus-visible {
+   .h1 {
+     font-size: 2.25rem !important;
+     line-height: 1.1 !important;
++    letter-spacing: -0.02em !important; /* relax ultra-tight hero tracking on small screens */
++  }
++
++  h2, .h2 {
++    font-size: 1.75rem;
++  }
++
++  .btn-primary, .btn-secondary {
++    padding: 0.75rem 1.5rem; /* comfortable tap targets without overflow on narrow screens */
+   }
+ }
+-- 
+2.43.0
+
