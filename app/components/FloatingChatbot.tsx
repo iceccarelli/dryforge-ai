@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { MessageCircle, X, Send, Bot } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -26,6 +26,11 @@ export default function FloatingChatbot() {
   ]);
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, isTyping]);
 
   const getResponse = (text: string): string => {
     const t = text.toLowerCase();
@@ -65,13 +70,21 @@ export default function FloatingChatbot() {
 
   return (
     <>
-      {/* Floating Action Button */}
+      {/* Floating Action Button — pulsating attention ring while closed */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 right-6 z-[60] flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0F172A] text-white shadow-[0_10px_40px_rgb(15,23,42,0.35)] hover:bg-slate-800 active:scale-[0.96] transition-all"
-        aria-label="Open DryForge site assistant"
+        className="fixed bottom-5 right-5 sm:bottom-6 sm:right-6 z-[60] flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0F172A] text-white shadow-[0_10px_40px_rgb(15,23,42,0.35)] hover:bg-slate-800 active:scale-[0.96] transition-all"
+        aria-label={isOpen ? "Close DryForge site assistant" : "Open DryForge site assistant"}
       >
-        {isOpen ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
+        {!isOpen && (
+          <>
+            <span className="absolute inset-0 rounded-2xl bg-[#F97316] opacity-40 animate-ping [animation-duration:2.2s]" aria-hidden="true" />
+            <span className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-[#F97316] ring-2 ring-[#0F172A]" aria-hidden="true">
+              <span className="absolute inset-0 rounded-full bg-[#F97316] animate-ping" />
+            </span>
+          </>
+        )}
+        <span className="relative">{isOpen ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}</span>
       </button>
 
       <AnimatePresence>
@@ -81,7 +94,7 @@ export default function FloatingChatbot() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 18, scale: 0.985 }}
             transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
-            className="fixed bottom-[92px] right-6 z-[70] flex h-[490px] w-full max-w-[370px] flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
+            className="fixed bottom-[88px] right-4 left-4 sm:left-auto sm:right-6 z-[70] flex h-[min(490px,calc(100dvh-120px))] w-auto sm:w-full sm:max-w-[370px] flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
           >
             {/* Header */}
             <div className="flex items-center justify-between bg-[#0F172A] px-5 py-4 text-white">
@@ -113,6 +126,7 @@ export default function FloatingChatbot() {
                   <Bot className="h-3.5 w-3.5 text-[#F97316]" /> Forge is typing...
                 </div>
               )}
+              <div ref={messagesEndRef} />
             </div>
 
             {/* Quick Replies */}

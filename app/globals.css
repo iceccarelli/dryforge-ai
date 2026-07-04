@@ -290,5 +290,14 @@ a:focus-visible {
   .h1 {
     font-size: 2.25rem !important;
     line-height: 1.1 !important;
+    letter-spacing: -0.02em !important; /* relax ultra-tight hero tracking on small screens */
+  }
+
+  h2, .h2 {
+    font-size: 1.75rem;
+  }
+
+  .btn-primary, .btn-secondary {
+    padding: 0.75rem 1.5rem; /* comfortable tap targets without overflow on narrow screens */
   }
 }
