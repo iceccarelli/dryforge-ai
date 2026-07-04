@@ -1,20 +1,28 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Users, Zap, Clock, TrendingUp, MapPin, CheckCircle } from "lucide-react";
+
+const clerkEnabled = Boolean(
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY
+);
+import { Users, Zap, Clock, TrendingUp, MapPin } from "lucide-react";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 
 export default async function Dashboard() {
-  const { userId } = await auth();
-  
-  if (!userId) {
-    redirect("/sign-in");
+  let firstName: string | null = null;
+
+  // When Clerk is configured the demo is gated behind login;
+  // without keys it renders as a public product demo.
+  if (clerkEnabled) {
+    const { userId } = await auth();
+    if (!userId) redirect("/");
+    const user = await currentUser();
+    firstName = user?.firstName ?? null;
   }
 
-  const user = await currentUser();
-
-  // Mock data - in production this would come from Supabase
+  // SAMPLE DATA — this is a product interface demo. DryForge has no
+  // deployed robots yet; nothing on this page is real telemetry.
   const fleet = [
     { id: "DF-047", model: "ForgePro-7", status: "Active", location: "Mississauga - Phase 2", sqftToday: 1240, uptime: "99.2%", operator: "Marcus T." },
     { id: "DF-052", model: "ForgePro-7", status: "Active", location: "Downtown Toronto - Tower C", sqftToday: 980, uptime: "97.8%", operator: "Priya K." },
@@ -42,15 +50,15 @@ export default async function Dashboard() {
               <div className="h-9 w-9 rounded-xl bg-[#0F172A] flex items-center justify-center text-white"><Zap className="h-5 w-5" /></div>
               <div>
                 <div className="font-bold text-2xl tracking-tight">DryForge Command</div>
-                <div className="text-xs text-slate-500 -mt-0.5">FLEET OPERATIONS • {user?.firstName || "Contractor"} PORTAL</div>
+                <div className="text-xs text-slate-500 -mt-0.5">FLEET OPERATIONS • {firstName || "Contractor"} PORTAL (DEMO)</div>
               </div>
             </div>
           </div>
           <div className="flex items-center gap-3 text-sm">
-            <div className="px-4 py-1.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-semibold flex items-center gap-1.5">
-              <div className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse" /> ALL SYSTEMS OPERATIONAL
+            <div className="px-4 py-1.5 bg-amber-100 text-amber-700 rounded-full text-xs font-semibold flex items-center gap-1.5">
+              <div className="h-1.5 w-1.5 bg-amber-500 rounded-full" /> PRODUCT DEMO — SAMPLE DATA
             </div>
-            <Link href="/pricing" className="btn-primary text-xs px-5 py-2">Add Robots to Fleet</Link>
+            <Link href="/#contact" className="btn-primary text-xs px-5 py-2">Apply for Pilot</Link>
           </div>
         </div>
       </div>
@@ -58,8 +66,8 @@ export default async function Dashboard() {
       <div className="mx-auto max-w-7xl px-6 py-10">
         {/* Welcome */}
         <div className="mb-10">
-          <h1 className="text-3xl font-bold tracking-tight">Good morning, {user?.firstName || "there"}.</h1>
-          <p className="text-slate-600">Your fleet finished 3,847 sqft yesterday across 3 active sites. 12% ahead of target.</p>
+          <h1 className="text-3xl font-bold tracking-tight">Good morning, {firstName || "there"}.</h1>
+          <p className="text-slate-600">This is what DryForge OS will look like running your fleet. All numbers below are illustrative sample data.</p>
         </div>
 
         {/* KPI Row */}
@@ -84,7 +92,7 @@ export default async function Dashboard() {
           <div className="lg:col-span-3 card p-7">
             <div className="flex items-center justify-between mb-6">
               <div className="font-semibold tracking-tight flex items-center gap-2"><Zap className="h-5 w-5" /> Live Robot Fleet</div>
-              <Link href="/enterprise" className="text-xs text-[#F97316] font-medium">MANAGE FLEET →</Link>
+              <span className="text-xs text-slate-400 font-medium">SAMPLE DATA</span>
             </div>
             
             <div className="overflow-x-auto">
@@ -131,7 +139,7 @@ export default async function Dashboard() {
                 </div>
               ))}
             </div>
-            <Link href="/resources" className="block mt-6 text-xs text-[#F97316] font-medium">View all jobs in operations portal →</Link>
+            <span className="block mt-6 text-xs text-slate-400 font-medium">Sample data — illustrative only</span>
           </div>
         </div>
 
@@ -139,7 +147,7 @@ export default async function Dashboard() {
         <div className="mt-6 card p-7">
           <div className="flex items-center justify-between mb-5">
             <div className="font-semibold tracking-tight">Recent Quotes &amp; Opportunities</div>
-            <Link href="/pricing" className="text-xs font-medium text-[#F97316]">NEW QUOTE →</Link>
+            <span className="text-xs font-medium text-slate-400">SAMPLE DATA</span>
           </div>
           <div className="grid md:grid-cols-2 gap-4">
             {recentQuotes.map(q => (
@@ -157,7 +165,7 @@ export default async function Dashboard() {
         </div>
 
         <div className="mt-8 text-center text-xs text-slate-400">
-          This is a live production dashboard connected to your Supabase + Clerk account. All data is mock for demo purposes. Real telemetry streams from every robot in the field.
+          Product interface demo with sample data only. DryForge is pre-launch — real telemetry will replace this view for founding pilot partners.
         </div>
       </div>
 

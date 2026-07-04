@@ -26,55 +26,41 @@ const inter = Inter({
 export const metadata: Metadata = {
   metadataBase: new URL("https://dryforge.ai"),
   title: {
-    default: "DryForge | Autonomous Drywall Finishing Robots | RaaS Platform",
+    default: "DryForge | Autonomous Drywall Finishing — Founding Pilot Program",
     template: "%s | DryForge",
   },
-  description: "The Operating System for Autonomous Drywall Finishing. Finish drywall 3× faster with semi-autonomous robots. RaaS pricing per sqft. Deploy in under 14 days in Ontario & beyond. Eliminate labor headaches forever.",
+  description:
+    "DryForge is building robot-assisted drywall finishing as a service for GTA contractors: semi-autonomous robots supervised by trained operators, priced per square foot with no capex. Now recruiting founding pilot partners.",
   keywords: [
     "drywall finishing robots",
     "construction robotics",
     "autonomous drywall",
     "RaaS construction",
     "drywall automation",
-    "Level 5 finish robot",
     "Ontario construction tech",
-    "labor shortage solution drywall",
+    "drywall labor shortage",
     "robot as a service drywall",
   ],
   authors: [{ name: "DryForge", url: "https://dryforge.ai" }],
-  creator: "DryForge Inc.",
+  creator: "DryForge",
   publisher: "DryForge",
   openGraph: {
-    title: "DryForge — Finish Drywall 3× Faster. Eliminate Labor Headaches Forever.",
-    description: "The dominant platform for autonomous drywall finishing. RaaS model. Proven in GTA job sites. 65% faster. 40-60% labor cost reduction. Book your site assessment today.",
-    images: [
-      {
-        url: "/og-image.jpg",
-        width: 1200,
-        height: 630,
-        alt: "DryForge - Autonomous Drywall Finishing Robots dominating the job site",
-      },
-    ],
+    title: "DryForge — Autonomous Drywall Finishing. Founding Pilot Program.",
+    description:
+      "Robot-assisted drywall finishing as a service, in development for GTA contractors. Per-sqft pricing, no capex, human-supervised. Apply to be a founding pilot partner.",
     siteName: "DryForge",
     locale: "en_CA",
     type: "website",
   },
   twitter: {
-    card: "summary_large_image",
-    title: "DryForge | The Operating System for Autonomous Drywall Finishing",
-    description: "Finish Drywall 3× Faster with ruthless efficiency. RaaS for contractors winning the labor war.",
-    images: ["/og-image.jpg"],
+    card: "summary",
+    title: "DryForge | Autonomous Drywall Finishing — Founding Pilot Program",
+    description:
+      "Robot-assisted drywall finishing as a service, in development for GTA contractors. Apply to be a founding pilot partner.",
   },
   robots: {
     index: true,
     follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      "max-video-preview": -1,
-      "max-image-preview": "large",
-      "max-snippet": -1,
-    },
   },
   alternates: {
     canonical: "https://dryforge.ai",
@@ -88,11 +74,32 @@ export const viewport: Viewport = {
   maximumScale: 5,
 };
 
+const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const content = (
+    <html
+      lang="en"
+      className={cn(
+        geistSans.variable,
+        geistMono.variable,
+        inter.variable,
+        "h-full antialiased scroll-smooth"
+      )}
+    >
+      <body className="min-h-full flex flex-col bg-[#FAFBFC] text-slate-950 font-sans">
+        {children}
+        <Toaster position="top-center" richColors closeButton />
+      </body>
+    </html>
+  );
+
+  if (!clerkEnabled) return content;
+
   return (
     <ClerkProvider
       appearance={{
@@ -102,20 +109,7 @@ export default function RootLayout({
         },
       }}
     >
-      <html
-        lang="en"
-        className={cn(
-          geistSans.variable,
-          geistMono.variable,
-          inter.variable,
-          "h-full antialiased scroll-smooth"
-        )}
-      >
-        <body className="min-h-full flex flex-col bg-[#FAFBFC] text-slate-950 font-sans">
-          {children}
-          <Toaster position="top-center" richColors closeButton />
-        </body>
-      </html>
+      {content}
     </ClerkProvider>
   );
 }

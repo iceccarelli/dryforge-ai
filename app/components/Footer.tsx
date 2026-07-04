@@ -1,20 +1,5 @@
 import Link from "next/link";
-import { 
-  Linkedin, Twitter, Youtube, Instagram, Facebook, 
-  MessageCircle, Github, Users 
-} from "lucide-react";
-
-const socialLinks = [
-  { icon: Linkedin, href: "https://linkedin.com/company/dryforge", label: "LinkedIn" },
-  { icon: Twitter, href: "https://x.com/dryforge", label: "X" },
-  { icon: Youtube, href: "https://youtube.com/@dryforge", label: "YouTube" },
-  { icon: Instagram, href: "https://instagram.com/dryforge", label: "Instagram" },
-  { icon: Facebook, href: "https://facebook.com/dryforge", label: "Facebook" },
-  { icon: MessageCircle, href: "https://tiktok.com/@dryforge", label: "TikTok" },
-  { icon: MessageCircle, href: "https://discord.gg/dryforge", label: "Discord" },
-  { icon: Github, href: "https://github.com/dryforge", label: "GitHub" },
-  { icon: Users, href: "https://reddit.com/r/dryforge", label: "Reddit" },
-];
+import { Mail } from "lucide-react";
 
 const footerLinks = {
   Product: [
@@ -37,17 +22,8 @@ const footerLinks = {
     { label: "Support", href: "/resources#support" },
   ],
   Company: [
-    { label: "About DryForge", href: "/enterprise#about" },
-    { label: "Leadership", href: "/enterprise#leadership" },
-    { label: "Careers", href: "/enterprise#careers" },
-    { label: "Press", href: "/enterprise#press" },
-    { label: "Contact", href: "#contact" },
-  ],
-  Legal: [
-    { label: "Privacy Policy", href: "/legal/privacy" },
-    { label: "Terms of Service", href: "/legal/terms" },
-    { label: "Security", href: "/legal/security" },
-    { label: "Trust & Compliance", href: "/enterprise#compliance" },
+    { label: "Enterprise Program", href: "/enterprise" },
+    { label: "Contact", href: "/#contact" },
   ],
 };
 
@@ -64,8 +40,8 @@ export default function Footer() {
               </div>
               <span className="font-bold text-2xl text-white tracking-[-1px]">DRYFORGE</span>
             </Link>
-            <p className="text-sm text-slate-400 max-w-[200px]">
-              The Operating System for Autonomous Drywall Finishing. Dominating the labor war.
+            <p className="text-sm text-slate-400 max-w-[220px]">
+              Building robot-assisted drywall finishing as a service for GTA contractors. Pre-launch — founding pilot partners wanted.
             </p>
           </div>
 
@@ -85,33 +61,15 @@ export default function Footer() {
           ))}
         </div>
 
-        {/* Social Row - 9 icons */}
         <div className="mt-16 pt-8 border-t border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-center gap-5">
-            {socialLinks.map((social, index) => {
-              const Icon = social.icon;
-              return (
-                <a
-                  key={index}
-                  href={social.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-slate-400 hover:text-white transition-colors p-1"
-                  aria-label={social.label}
-                >
-                  <Icon className="h-4 w-4" />
-                </a>
-              );
-            })}
-          </div>
+          <a href="mailto:pilot@dryforge.ai" className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors">
+            <Mail className="h-4 w-4" /> pilot@dryforge.ai
+          </a>
 
           <div className="text-xs text-slate-500 flex flex-wrap gap-x-4 gap-y-1">
-            <span>© {new Date().getFullYear()} DryForge Inc. All rights reserved.</span>
-            <Link href="/legal/privacy" className="hover:text-slate-400">Privacy</Link>
-            <Link href="/legal/terms" className="hover:text-slate-400">Terms</Link>
-            <Link href="/legal/security" className="hover:text-slate-400">Security</Link>
+            <span>© {new Date().getFullYear()} DryForge. All rights reserved.</span>
             <span className="hidden md:inline">•</span>
-            <span>Ontario, Canada • Serving North America</span>
+            <span>Greater Toronto Area, Ontario, Canada</span>
           </div>
         </div>
       </div>

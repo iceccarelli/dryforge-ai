@@ -2,12 +2,10 @@ import Header from "./components/Header";
 import Footer from "./components/Footer";
 import FloatingChatbot from "./components/FloatingChatbot";
 import ROICalculator from "./components/ROICalculator";
-import { 
-  Zap, Clock, TrendingUp, Users, Shield, Award, 
-  ArrowRight, CheckCircle, Play, MapPin, Target 
+import {
+  Zap, Clock, TrendingUp, Users, Shield, ArrowRight, CheckCircle, Target, Mail
 } from "lucide-react";
 import Link from "next/link";
-import { motion } from "framer-motion";
 
 export default function DryForgeHome() {
   return (
@@ -18,83 +16,82 @@ export default function DryForgeHome() {
       <section className="relative pt-16 pb-20 border-b border-slate-200 bg-white">
         <div className="mx-auto max-w-5xl px-6 text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-1 text-xs font-semibold tracking-[1px] text-slate-600 mb-6">
-            ONTARIO • GTA • NOW EXPANDING ACROSS CANADA
+            IN DEVELOPMENT • FOUNDING PILOT PROGRAM • GREATER TORONTO AREA
           </div>
 
-          <h1 className="h1 tracking-[-3.2px] text-balance max-w-[18ch] mx-auto">
-            Finish Drywall <span className="text-[#F97316]">3× Faster.</span><br />Eliminate Labor Headaches Forever.
+          <h1 className="h1 tracking-[-3.2px] text-balance max-w-[20ch] mx-auto">
+            Drywall finishing is running out of <span className="text-[#F97316]">finishers.</span><br />We&apos;re building the machines.
           </h1>
-          
+
           <p className="mt-6 max-w-2xl mx-auto text-xl text-slate-600 leading-tight">
-            The Operating System for Autonomous Drywall Finishing. <br className="hidden md:block" />
-            Semi-autonomous robots + human supervisors. Per-sqft RaaS. <br />
-            Proven on 200+ GTA job sites. Deploy in under 14 days.
+            DryForge is developing robot-assisted drywall finishing as a service:<br className="hidden md:block" />
+            semi-autonomous taping, mudding, and sanding robots supervised by trained operators,<br className="hidden md:block" />
+            priced per finished square foot with no capital outlay for contractors.
           </p>
 
           <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="#roi-calculator" className="btn-primary text-base px-9 py-3.5 w-full sm:w-auto group">
-              Calculate Your ROI <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-0.5 transition" />
+            <Link href="#contact" className="btn-primary text-base px-9 py-3.5 w-full sm:w-auto group">
+              Apply for the Founding Pilot <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-0.5 transition" />
             </Link>
-            <Link href="/pricing" className="btn-secondary text-base px-9 py-3.5 w-full sm:w-auto">
-              Start 14-Day Pilot
+            <Link href="#roi-calculator" className="btn-secondary text-base px-9 py-3.5 w-full sm:w-auto">
+              Model Your Project Economics
             </Link>
           </div>
 
           <p className="mt-5 text-xs uppercase tracking-[1.5px] text-slate-500 font-medium">
-            The contractors winning the labor war are switching to DryForge
+            Pre-launch. No deployed fleet yet — that&apos;s exactly why founding partners get to shape it.
           </p>
         </div>
 
         <div className="mt-16 border-t border-b border-slate-200 bg-white py-5">
           <div className="mx-auto max-w-6xl px-6 flex flex-wrap items-center justify-center gap-x-10 gap-y-4 text-sm text-slate-500 font-medium">
-            <div className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-emerald-600" /> 200+ robots deployed</div>
-            <div className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-emerald-600" /> 94% Level 5 first-pass rate</div>
-            <div className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-emerald-600" /> 4.1 mo average payback</div>
-            <div className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-emerald-600" /> 65% faster finishing</div>
+            <div className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-emerald-600" /> Robots-as-a-Service — no capex</div>
+            <div className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-emerald-600" /> Human-supervised, always</div>
+            <div className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-emerald-600" /> Per-sqft pricing</div>
+            <div className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-emerald-600" /> Built with pilot partners, not for them</div>
           </div>
         </div>
       </section>
 
-      {/* STATS BAR */}
+      {/* THE PROBLEM */}
       <section className="section bg-white border-b">
         <div className="mx-auto max-w-6xl px-6">
           <div className="text-center mb-8">
-            <p className="uppercase text-xs tracking-[2px] font-semibold text-slate-500">PROVEN ON THE TOUGHEST GTA SITES</p>
+            <p className="uppercase text-xs tracking-[2px] font-semibold text-slate-500">WHY THIS, WHY NOW</p>
+            <h2 className="h2 tracking-tight mt-3">The finishing trades are aging out faster than they&apos;re being replaced.</h2>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-slate-200 rounded-2xl overflow-hidden">
+          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
             {[
-              { value: "65%", label: "Faster Finishing vs Manual Crews" },
-              { value: "40-60%", label: "Labor Cost Reduction" },
-              { value: "<14", label: "Days to Full Deployment" },
-              { value: "91%", label: "Reduction in Callbacks" },
-            ].map((stat, i) => (
-              <div key={i} className="bg-white p-8 text-center">
-                <div className="text-5xl font-bold tracking-tighter text-[#0F172A]">{stat.value}</div>
-                <div className="mt-3 text-sm text-slate-600 font-medium leading-tight">{stat.label}</div>
+              { title: "A shrinking workforce", desc: "Industry bodies like BuildForce Canada have warned for years that a large share of Canada's construction workforce is approaching retirement, with too few new entrants in the finishing trades to replace them." },
+              { title: "Schedule risk lands on drywall", desc: "Taping, mudding, and sanding sit on the critical path of nearly every interior fit-out. When finishing crews are short, whole floors wait — and GCs feel it in liquidated damages." },
+              { title: "The work suits automation", desc: "Large, flat, repetitive surfaces with measurable quality criteria are one of the most tractable problems in construction robotics. Companies in the US have already proven robot-assisted finishing works. The GTA deserves its own." },
+            ].map((item, i) => (
+              <div key={i} className="card p-7">
+                <h3 className="font-semibold text-lg tracking-tight mb-3">{item.title}</h3>
+                <p className="text-slate-600 text-sm leading-relaxed">{item.desc}</p>
               </div>
             ))}
           </div>
-          <p className="text-center text-xs text-slate-500 mt-6">Data aggregated from 847 completed drywall robot jobs across the Greater Toronto Area • 2023–2026</p>
         </div>
       </section>
 
-      {/* FEATURES */}
+      {/* WHAT WE'RE BUILDING */}
       <section className="section">
         <div className="mx-auto max-w-6xl px-6">
           <div className="text-center mb-12">
-            <div className="text-[#F97316] text-xs font-bold tracking-[2px] mb-3">THE DRYFORGE ADVANTAGE</div>
-            <h2 className="h2 tracking-tight">Built to dominate the drywall labor crisis.</h2>
-            <p className="mt-4 text-lg text-slate-600 max-w-md mx-auto">Every component engineered for maximum throughput and minimum human dependency.</p>
+            <div className="text-[#F97316] text-xs font-bold tracking-[2px] mb-3">WHAT WE&apos;RE BUILDING</div>
+            <h2 className="h2 tracking-tight">A finishing system, not just a robot.</h2>
+            <p className="mt-4 text-lg text-slate-600 max-w-md mx-auto">These are our design targets — the spec we&apos;re engineering toward and will validate openly with pilot partners.</p>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[
-              { icon: Zap, title: "Mud • Tape • Sand Automation", desc: "Full-stack automation of the entire finishing process. One robot handles compound application, taping, and multi-pass sanding with adaptive pressure." },
-              { icon: Target, title: "Level 4 & 5 Finish Standard", desc: "Proprietary closed-loop vision + force control delivers Level 4.8–5.0 finishes on first or second pass. 91% fewer punch-list items." },
-              { icon: Users, title: "Semi-Autonomous + Human Supervisor", desc: "One trained operator supervises up to 4 robots. Human judgment for edges, complex geometry. Full safety compliance built in." },
-              { icon: TrendingUp, title: "Per-Sqft RaaS Pricing", desc: "No capex. Pay only for finished square footage. Transparent, predictable costs. Includes robot, operator, software platform, maintenance & insurance." },
-              { icon: Shield, title: "Real-Time Data Moat from GTA Sites", desc: "Every square foot scanned, timestamped, and logged. 3D quality reports auto-generated. Your competitive advantage compounds with every job." },
-              { icon: Clock, title: "Deploy in Under 14 Days", desc: "From contract signature to production robots on your floor in 9–14 days in Ontario. We handle logistics, calibration, and crew training." },
+              { icon: Zap, title: "Mud • Tape • Sand Automation", desc: "Automation of the core finishing sequence: compound application, taping, and multi-pass sanding — with humans handling edges, corners, and complex geometry." },
+              { icon: Target, title: "Level 4/5 Finish Target", desc: "Closed-loop vision and surface measurement so quality is inspected continuously, not argued about at punch-list time." },
+              { icon: Users, title: "Human Supervisor Model", desc: "One trained operator supervising multiple robots. Your best finishers become supervisors instead of leaving the trade." },
+              { icon: TrendingUp, title: "Per-Sqft RaaS Pricing", desc: "No capex. Pay per finished square foot, with robot, operator, software, and maintenance bundled. Pilot pricing set jointly with founding partners." },
+              { icon: Shield, title: "Every Sqft Documented", desc: "Scanned, timestamped quality records for every section finished — evidence for QA disputes, not marketing decks." },
+              { icon: Clock, title: "Fast, Low-Friction Deployment", desc: "The design goal is measured in days, not months: site assessment, calibration, and supervisor training as a repeatable playbook." },
             ].map((feature, index) => (
               <div key={index} className="card card-feature group">
                 <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-[#0F172A] group-hover:bg-[#F97316] group-hover:text-white transition-colors">
@@ -108,23 +105,23 @@ export default function DryForgeHome() {
         </div>
       </section>
 
-      {/* HOW IT WORKS */}
+      {/* PILOT STRUCTURE */}
       <section className="section bg-white border-y">
         <div className="mx-auto max-w-6xl px-6">
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between mb-12">
             <div>
-              <div className="text-xs uppercase tracking-[2px] text-[#F97316] font-bold">4-STEP DEPLOYMENT</div>
-              <h2 className="h2 tracking-tight mt-2">From bid to production in under two weeks.</h2>
+              <div className="text-xs uppercase tracking-[2px] text-[#F97316] font-bold">HOW THE FOUNDING PILOT WORKS</div>
+              <h2 className="h2 tracking-tight mt-2">Four steps. Full transparency. Real measurement.</h2>
             </div>
-            <Link href="/pricing" className="mt-4 lg:mt-0 inline-flex items-center text-sm font-semibold text-[#F97316] hover:underline">See full deployment timeline <ArrowRight className="ml-1 h-4 w-4" /></Link>
+            <Link href="#contact" className="mt-4 lg:mt-0 inline-flex items-center text-sm font-semibold text-[#F97316] hover:underline">Apply for a pilot slot <ArrowRight className="ml-1 h-4 w-4" /></Link>
           </div>
 
           <div className="grid md:grid-cols-4 gap-6">
             {[
-              { step: "01", title: "Site Assessment", desc: "Our team scans your floor plans and current crew metrics. We deliver a precise robot count + ROI projection within 48 hours." },
-              { step: "02", title: "Contract & Onboarding", desc: "Simple RaaS agreement. We handle WSIB, insurance, and site-specific safety plans. 2-day virtual + on-site training for your supervisor." },
-              { step: "03", title: "Robot Deployment", desc: "Robots arrive calibrated. 3-day production ramp with our lead technician on-site. Your crew learns to supervise while we optimize paths." },
-              { step: "04", title: "Full Production + Data", desc: "Robots run 2 shifts. Real-time dashboard shows sqft finished, quality scores, and labor hours saved. Continuous improvement via our data moat." },
+              { step: "01", title: "Site Assessment", desc: "We walk your floor plans and current crew metrics with you and agree on measurable success criteria before anything is signed." },
+              { step: "02", title: "Pilot Agreement", desc: "A short, honest pilot agreement: defined scope, defined section of a real project, defined metrics, and a defined exit for both sides." },
+              { step: "03", title: "Supervised Deployment", desc: "Robots run on a bounded section with our engineers on-site and your crew observing. Every square foot is measured against the manual baseline." },
+              { step: "04", title: "Open Results", desc: "You get the full data — throughput, quality scores, cost per sqft — whether it flatters us or not. Founding partners get locked preferential pricing if we proceed." },
             ].map((item, idx) => (
               <div key={idx} className="relative pl-4 border-l-2 border-slate-200">
                 <div className="step-number mb-6 -ml-4">{item.step}</div>
@@ -136,93 +133,62 @@ export default function DryForgeHome() {
         </div>
       </section>
 
-      {/* ROI IMPACT */}
-      <section className="section">
-        <div className="mx-auto max-w-5xl px-6 text-center">
-          <div className="uppercase text-xs tracking-[2px] font-bold text-[#F97316] mb-3">REAL NUMBERS FROM REAL GTA JOBS</div>
-          <h2 className="h2 tracking-tight">The math is brutal for traditional crews.</h2>
-          <p className="mt-4 text-lg text-slate-600">DryForge customers are winning bids they used to lose and protecting margins they used to give away.</p>
-        </div>
-
-        <div className="mt-12 mx-auto max-w-6xl px-6 grid md:grid-cols-3 gap-6">
-          {[
-            { number: "$2.85", unit: "/sqft", label: "All-in RaaS cost — robot, operator, software, maintenance" },
-            { number: "4.1", unit: "months", label: "Average payback period across 200+ deployments" },
-            { number: "847", unit: "jobs", label: "Completed autonomous drywall projects in Ontario to date" },
-          ].map((item, i) => (
-            <div key={i} className="card card-stat">
-              <div className="text-6xl font-bold tracking-[-2px] text-[#0F172A]">{item.number}<span className="text-3xl font-normal text-slate-400">{item.unit}</span></div>
-              <p className="mt-4 text-sm text-slate-600 leading-snug">{item.label}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
       {/* ROI CALCULATOR */}
-      <section id="roi-calculator" className="section bg-white border-y">
+      <section id="roi-calculator" className="section">
         <div className="mx-auto max-w-5xl px-6">
           <div className="text-center mb-10">
-            <div className="text-[#F97316] text-xs tracking-[2px] font-bold">INTERACTIVE TOOL</div>
-            <h2 className="h2 tracking-tight mt-2">Run your own numbers. See the truth.</h2>
-            <p className="text-slate-600 mt-3">Input your project specs. Get instant savings, robots required, and payback period.</p>
+            <div className="text-[#F97316] text-xs tracking-[2px] font-bold">PLANNING MODEL</div>
+            <h2 className="h2 tracking-tight mt-2">Model what robot-assisted finishing could mean for your project.</h2>
+            <p className="text-slate-600 mt-3">An interactive model built on published industry productivity benchmarks and our target pricing. It is a planning tool — not measured DryForge performance data.</p>
           </div>
           <ROICalculator />
         </div>
       </section>
 
-      {/* USE CASES */}
-      <section className="section">
+      {/* FOUNDING PARTNERS */}
+      <section className="section bg-white border-y">
         <div className="mx-auto max-w-6xl px-6">
-          <div className="flex items-end justify-between mb-10">
-            <div>
-              <div className="text-xs uppercase tracking-widest text-[#F97316] font-bold">WINNING CONTRACTORS</div>
-              <h2 className="h2 tracking-tight">The ones who switched are dominating their markets.</h2>
-            </div>
-            <Link href="/resources#cases" className="hidden md:inline text-sm font-semibold text-[#F97316] hover:underline">Read full case studies →</Link>
+          <div className="text-center mb-10">
+            <div className="text-xs uppercase tracking-widest text-[#F97316] font-bold">FOUNDING PILOT PARTNERS</div>
+            <h2 className="h2 tracking-tight mt-2">We&apos;re recruiting a small number of GTA contractors. Here&apos;s the deal.</h2>
           </div>
 
           <div className="grid md:grid-cols-3 gap-6">
             {[
-              { company: "Summit Drywall Systems", location: "Mississauga, ON", quote: "We went from 22 finishers to 7 supervisors + DryForge robots on a 180k sqft hospital. Finished 11 weeks early and won our next three bids on price.", metric: "68% labor reduction", project: "180,000 sqft healthcare" },
-              { company: "ForgeLine Construction", location: "Downtown Toronto", quote: "Level 5 finish on a 42-storey condo with 4 robots and 2 guys. Zero callbacks on the first 18 floors. Our competitors are still figuring out how we bid so low.", metric: "3.9 month payback", project: "42-storey residential tower" },
-              { company: "Atlas Interiors Ltd.", location: "Markham & Vaughan", quote: "DryForge paid for itself on the second job. We now bid every large commercial project with robots included. Our win rate on 50k+ sqft jobs went from 31% to 67%.", metric: "2.1x bid win rate", project: "Multiple commercial fit-outs" },
-            ].map((story, idx) => (
-              <div key={idx} className="card p-7 flex flex-col">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-emerald-600 font-semibold mb-4">
-                    <MapPin className="h-3.5 w-3.5" /> {story.location}
-                  </div>
-                  <h4 className="font-semibold text-xl tracking-tight mb-1">{story.company}</h4>
-                  <p className="text-sm text-slate-500 mb-5">{story.project}</p>
-                  <p className="text-[15px] text-slate-700 leading-relaxed italic">“{story.quote}”</p>
-                </div>
-                <div className="mt-6 pt-6 border-t flex items-center justify-between text-sm">
-                  <span className="font-semibold text-emerald-600">{story.metric}</span>
-                  <span className="text-xs text-slate-400">VERIFIED CASE</span>
-                </div>
+              { title: "What you give", items: ["A bounded section of a real active project", "Honest baseline data from your manual crews", "Blunt feedback from your finishers and supervisors"] },
+              { title: "What you get", items: ["First access to the technology in your market", "Locked founding-partner pricing if the pilot converts", "Full pilot data and quality documentation, no spin"] },
+              { title: "What we promise", items: ["No fabricated metrics — we publish what we measure", "Humans supervise every robot, on every site", "A defined exit if the numbers don't work for you"] },
+            ].map((col, idx) => (
+              <div key={idx} className="card p-7">
+                <h4 className="font-semibold text-xl tracking-tight mb-5">{col.title}</h4>
+                <ul className="space-y-3 text-sm text-slate-700">
+                  {col.items.map((it, i) => (
+                    <li key={i} className="flex gap-2.5"><CheckCircle className="h-4 w-4 mt-0.5 text-emerald-600 flex-shrink-0" />{it}</li>
+                  ))}
+                </ul>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* TECHNOLOGY */}
+      {/* ENGINEERING APPROACH */}
       <section className="section bg-[#0F172A] text-white">
         <div className="mx-auto max-w-6xl px-6">
           <div className="grid lg:grid-cols-2 gap-x-16 gap-y-12 items-center">
             <div>
-              <div className="uppercase tracking-[2px] text-xs text-[#F97316] font-bold mb-3">PROPRIETARY ROBOTICS PLATFORM</div>
-              <h2 className="h2 tracking-[-1.5px] text-white">Engineered for the drywall battlefield.</h2>
-              <p className="mt-5 text-lg text-slate-300">Our robots are purpose-built for the chaos of active construction sites — dust, uneven floors, tight timelines, and zero tolerance for defects.</p>
-              
+              <div className="uppercase tracking-[2px] text-xs text-[#F97316] font-bold mb-3">ENGINEERING APPROACH</div>
+              <h2 className="h2 tracking-[-1.5px] text-white">Built for active construction sites, not lab demos.</h2>
+              <p className="mt-5 text-lg text-slate-300">Dust, uneven floors, tight schedules, and zero tolerance for defects. That&apos;s the environment we&apos;re engineering for from day one.</p>
+
               <ul className="mt-8 space-y-4 text-sm">
                 {[
-                  "Multi-sensor fusion: LiDAR + stereo vision + force/torque at 2kHz",
-                  "Adaptive compound delivery with real-time viscosity compensation",
-                  "Self-calibrating sanding heads with automatic grit progression",
-                  "Fleet orchestration software that optimizes paths across 8+ robots",
-                  "Full integration with Procore, Autodesk Construction Cloud, and job costing systems",
-                  "SOC 2 Type II + WSIB compliant. Every action logged for insurance & QA.",
+                  "Multi-sensor perception: LiDAR + stereo vision + force/torque sensing",
+                  "Adaptive compound delivery with viscosity compensation",
+                  "Automated multi-pass sanding with progressive grit control",
+                  "Fleet orchestration software for multi-robot coordination",
+                  "Integrations with Procore, Autodesk Construction Cloud, and job-costing systems on the roadmap",
+                  "Designed toward ISO 13849 functional-safety requirements and Ontario site-safety compliance — certification claims only when certified",
                 ].map((item, i) => (
                   <li key={i} className="flex gap-3"><CheckCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#F97316]" /> {item}</li>
                 ))}
@@ -230,102 +196,45 @@ export default function DryForgeHome() {
             </div>
 
             <div className="bg-white/5 border border-white/10 rounded-3xl p-9 text-sm">
-              <div className="uppercase text-xs tracking-widest text-[#F97316] mb-4">INTEGRATIONS & DATA</div>
+              <div className="uppercase text-xs tracking-widest text-[#F97316] mb-4">THE SOFTWARE LAYER</div>
               <div className="space-y-6 text-slate-300">
-                <div><span className="font-semibold text-white">Live Dashboard:</span> Sqft finished per hour, quality score heatmaps, labor hours displaced, predictive maintenance alerts.</div>
-                <div><span className="font-semibold text-white">API Access:</span> Push finished quantities, quality reports, and robot utilization directly into your ERP or job costing platform.</div>
-                <div><span className="font-semibold text-white">Safety Layer:</span> ISO 13849 PLd, collaborative speed limiting, emergency stop on every unit, full audit trail.</div>
+                <div><span className="font-semibold text-white">Live Dashboard:</span> Sqft finished, quality heatmaps, and maintenance status per robot. Preview the interface in our <Link href="/dashboard" className="underline hover:text-white">product demo</Link>.</div>
+                <div><span className="font-semibold text-white">API Access (planned):</span> Push finished quantities and quality reports into your ERP or job-costing platform.</div>
+                <div><span className="font-semibold text-white">Safety Layer:</span> Speed limiting, emergency stops, and a full audit trail of every robot action — designed in from the start.</div>
               </div>
-              <Link href="/enterprise" className="mt-8 inline-flex items-center text-sm font-semibold text-white hover:text-[#F97316] transition">Explore Enterprise integrations →</Link>
+              <Link href="/products" className="mt-8 inline-flex items-center text-sm font-semibold text-white hover:text-[#F97316] transition">See the platform in detail →</Link>
             </div>
           </div>
         </div>
       </section>
 
-      {/* PRICING */}
+      {/* PRICING DIRECTION */}
       <section id="pricing" className="section">
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="text-center mb-12">
-            <div className="text-xs tracking-[2px] uppercase font-bold text-[#F97316]">ROBOT AS A SERVICE</div>
-            <h2 className="h2 tracking-tight mt-3">Simple. Transparent. Aggressive on value.</h2>
-            <p className="text-slate-600 mt-3 max-w-md mx-auto">No hidden fees. No capex. Pay for finished square footage and dominate your bids.</p>
-          </div>
-
-          <div className="grid lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            <div className="card pricing-card p-8 flex flex-col">
-              <div>
-                <div className="text-xs uppercase tracking-widest text-slate-500 font-semibold">STARTER FLEET</div>
-                <div className="mt-3 flex items-baseline"><span className="text-5xl font-bold tracking-tighter">$2.45</span><span className="text-xl text-slate-400 ml-1">/sqft</span></div>
-                <p className="text-sm text-slate-600 mt-1">Perfect for first-time robot users and smaller commercial projects.</p>
-              </div>
-              <ul className="mt-8 space-y-3 text-sm flex-1">
-                {["1–2 robots included", "Dedicated operator (1 per 2 robots)", "Basic analytics dashboard", "Standard support (next business day)", "14-day pilot available"].map((f,i) => <li key={i} className="flex gap-2.5"><CheckCircle className="h-4 w-4 mt-0.5 text-emerald-600 flex-shrink-0" />{f}</li>)}
-              </ul>
-              <Link href="/pricing" className="mt-8 btn-secondary w-full justify-center">Start with Starter</Link>
-            </div>
-
-            <div className="card pricing-card popular p-8 flex flex-col relative">
-              <div className="absolute -top-3 right-6 bg-[#F97316] text-white text-xs font-bold px-4 py-1 rounded tracking-wider">MOST POPULAR</div>
-              <div>
-                <div className="text-xs uppercase tracking-widest text-[#F97316] font-semibold">PROFESSIONAL RaaS</div>
-                <div className="mt-3 flex items-baseline"><span className="text-5xl font-bold tracking-tighter">$2.85</span><span className="text-xl text-slate-400 ml-1">/sqft</span></div>
-                <p className="text-sm text-slate-600 mt-1">The sweet spot for mid-to-large contractors running multiple concurrent jobs.</p>
-              </div>
-              <ul className="mt-8 space-y-3 text-sm flex-1">
-                {["3–8 robots", "Trained supervisor + operator team", "Full real-time + historical analytics", "Priority 4-hour support + on-site SLA", "Procore + ACC integration", "Monthly business review with our team"].map((f,i) => <li key={i} className="flex gap-2.5"><CheckCircle className="h-4 w-4 mt-0.5 text-emerald-600 flex-shrink-0" />{f}</li>)}
-              </ul>
-              <Link href="/pricing" className="mt-8 btn-primary w-full justify-center">Deploy Professional Fleet</Link>
-            </div>
-
-            <div className="card pricing-card p-8 flex flex-col">
-              <div>
-                <div className="text-xs uppercase tracking-widest text-slate-500 font-semibold">ENTERPRISE</div>
-                <div className="mt-3 flex items-baseline"><span className="text-5xl font-bold tracking-tighter">$1.95</span><span className="text-xl text-slate-400 ml-1">/sqft</span></div>
-                <p className="text-sm text-slate-600 mt-1">Volume pricing + white-glove service for large GCs and multi-year programs.</p>
-              </div>
-              <ul className="mt-8 space-y-3 text-sm flex-1">
-                {["10+ robots + dedicated fleet manager", "Custom SLAs & 24/7 support", "Private data lake + API access", "On-site robotics engineers", "Co-branded safety & training programs", "Volume discounts + multi-year locks"].map((f,i) => <li key={i} className="flex gap-2.5"><CheckCircle className="h-4 w-4 mt-0.5 text-emerald-600 flex-shrink-0" />{f}</li>)}
-              </ul>
-              <Link href="/enterprise" className="mt-8 btn-secondary w-full justify-center">Talk to Enterprise Team</Link>
-            </div>
-          </div>
-          <p className="text-center text-xs text-slate-500 mt-8">All plans include robot hardware, trained personnel, software platform, maintenance, insurance, and quality reporting. Minimum 3-month commitment. 14-day pilot available on all tiers.</p>
-        </div>
-      </section>
-
-      {/* RESOURCES TEASER */}
-      <section className="section bg-white border-y">
-        <div className="mx-auto max-w-5xl px-6 text-center">
-          <h2 className="h2 tracking-tight">Everything you need to win with robots.</h2>
-          <p className="mt-3 text-lg text-slate-600">Deep documentation, real case studies, and the industry’s most advanced ROI tools.</p>
-          
-          <div className="mt-10 grid md:grid-cols-3 gap-6 text-left">
-            {[
-              { title: "Technical Documentation", desc: "Robot specs, integration guides, API reference, safety protocols, and deployment playbooks." },
-              { title: "Case Studies & Benchmarks", desc: "Detailed breakdowns from 200+ Ontario projects with before/after metrics and bid comparisons." },
-              { title: "ROI & Planning Tools", desc: "Interactive calculators, bid templates, crew transition playbooks, and floor-plan analysis templates." },
-            ].map((res, i) => (
-              <Link key={i} href="/resources" className="card p-7 group hover:border-[#F97316]/30">
-                <h4 className="font-semibold tracking-tight text-lg group-hover:text-[#F97316] transition">{res.title}</h4>
-                <p className="mt-3 text-sm text-slate-600">{res.desc}</p>
-                <div className="mt-5 text-xs font-semibold text-[#F97316] flex items-center">Explore resources <ArrowRight className="ml-1.5 h-3 w-3" /></div>
-              </Link>
-            ))}
+        <div className="mx-auto max-w-4xl px-6 text-center">
+          <div className="text-xs tracking-[2px] uppercase font-bold text-[#F97316]">PRICING DIRECTION</div>
+          <h2 className="h2 tracking-tight mt-3">Per finished square foot. No capex. Set with pilot partners.</h2>
+          <p className="text-slate-600 mt-4 max-w-2xl mx-auto">
+            Our target model bundles robots, trained operators, software, and maintenance into a single per-sqft rate that undercuts fully-loaded manual finishing cost on large commercial projects. Exact rates will be validated and published from real pilot data — founding partners lock preferential pricing before anyone else.
+          </p>
+          <div className="mt-8">
+            <Link href="/pricing" className="btn-secondary px-8 py-3">See the target pricing model</Link>
           </div>
         </div>
       </section>
 
       {/* FINAL CTA */}
-      <section className="bg-[#0F172A] py-16 text-white">
+      <section id="contact" className="bg-[#0F172A] py-16 text-white">
         <div className="mx-auto max-w-4xl px-6 text-center">
-          <h2 className="text-4xl md:text-5xl font-bold tracking-[-1.8px]">Ready to finish drywall like the winners do?</h2>
-          <p className="mt-4 text-xl text-slate-300">Book a site assessment or start your 14-day pilot this month. The labor shortage isn’t going away — but your dependency on it can.</p>
-          
+          <h2 className="text-4xl md:text-5xl font-bold tracking-[-1.8px]">Help build the machine that fixes your labor problem.</h2>
+          <p className="mt-4 text-xl text-slate-300">If you run drywall crews in the GTA and want first access — with honest numbers and a defined exit — we want to talk.</p>
+
           <div className="mt-9 flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="#contact" className="btn-primary bg-white text-[#0F172A] hover:bg-slate-100 px-10 py-3.5 text-base">Book Site Assessment</Link>
-            <Link href="/pricing" className="btn-secondary border-white/30 text-white hover:bg-white/10 px-10 py-3.5 text-base">Start 14-Day Pilot</Link>
+            <a href="mailto:pilot@dryforge.ai?subject=Founding%20Pilot%20Application" className="btn-primary bg-white text-[#0F172A] hover:bg-slate-100 px-10 py-3.5 text-base inline-flex items-center gap-2">
+              <Mail className="h-4 w-4" /> Apply for the Founding Pilot
+            </a>
+            <Link href="/pricing" className="btn-secondary border-white/30 text-white hover:bg-white/10 px-10 py-3.5 text-base">See Target Pricing</Link>
           </div>
-          <p className="mt-5 text-xs text-slate-400">Current Ontario deployment slots filling for Q3 2026 • Limited fleet availability</p>
+          <p className="mt-5 text-xs text-slate-400">DryForge is pre-launch. We will never show you a metric we didn&apos;t measure.</p>
         </div>
       </section>
 

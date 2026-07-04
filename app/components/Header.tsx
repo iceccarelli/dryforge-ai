@@ -6,6 +6,10 @@ import { Menu, X, Zap } from "lucide-react";
 import { SignInButton, SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
 
+// Inlined at build time; when Clerk keys are absent the auth UI is hidden
+// so the site works without any environment variables.
+const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+
 const navLinks = [
   { href: "/products", label: "Products" },
   { href: "/solutions", label: "Solutions" },
@@ -55,7 +59,9 @@ export default function Header() {
               Talk to an Expert
             </Link>
 
-            {/* Auth */}
+            {/* Auth (only rendered when Clerk is configured) */}
+            {clerkEnabled && (
+              <>
             <SignedOut>
               <SignInButton mode="modal">
                 <button className="btn-secondary text-sm px-5 py-2.5 hidden sm:inline-flex">
@@ -72,13 +78,15 @@ export default function Header() {
                 }}
               />
             </SignedIn>
+              </>
+            )}
 
-            {/* Primary CTA - Dominant */}
+            {/* Primary CTA */}
             <Link 
               href="/pricing" 
               className="btn-primary text-sm px-6 py-2.5 hidden sm:inline-flex"
             >
-              Start 14-Day Pilot
+              Apply for Pilot
             </Link>
 
             {/* Mobile Menu Toggle */}
@@ -115,7 +123,7 @@ export default function Header() {
               ))}
               <div className="pt-4 border-t flex flex-col gap-3">
                 <Link href="#contact" className="btn-secondary justify-center">Talk to an Expert</Link>
-                <Link href="/pricing" className="btn-primary justify-center">Start 14-Day Pilot</Link>
+                <Link href="/pricing" className="btn-primary justify-center">Apply for Pilot</Link>
               </div>
             </div>
           </motion.div>
