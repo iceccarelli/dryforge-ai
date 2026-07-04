@@ -1,0 +1,294 @@
+@import "tailwindcss";
+
+:root {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  
+  /* DryForge Enterprise Palette - Ruthless & Professional */
+  --color-primary: #F97316;
+  --color-primary-dark: #EA580C;
+  --color-navy: #0F172A;
+  --color-slate: #1E293B;
+  --color-accent: #F97316;
+  --color-success: #10B981;
+  --color-bg: #FAFBFC;
+  --color-card: #FFFFFF;
+  --color-border: #E2E8F0;
+  --color-muted: #64748B;
+}
+
+body {
+  font-family: var(--font-geist-sans);
+}
+
+/* AWS-inspired Enterprise Typography & Hierarchy */
+h1, .h1 {
+  font-size: 3.5rem;
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+h2, .h2 {
+  font-size: 2.25rem;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+h3, .h3 {
+  font-size: 1.5rem;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+/* Professional Buttons - AWS Style + Dominant Edge */
+.btn-primary {
+  background-color: var(--color-primary);
+  color: white;
+  font-weight: 600;
+  padding: 0.875rem 2rem;
+  border-radius: 6px;
+  transition: all 0.15s cubic-bezier(0.23, 1, 0.32, 1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.9375rem;
+  letter-spacing: -0.01em;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.25);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+.btn-secondary {
+  background-color: white;
+  color: var(--color-navy);
+  font-weight: 600;
+  padding: 0.875rem 2rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  transition: all 0.15s cubic-bezier(0.23, 1, 0.32, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.9375rem;
+}
+
+.btn-secondary:hover {
+  background-color: #F8FAFC;
+  border-color: #CBD5E1;
+  transform: translateY(-1px);
+}
+
+.btn-ghost {
+  color: var(--color-navy);
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.btn-ghost:hover {
+  background-color: #F1F5F9;
+}
+
+/* Enterprise Cards - Clean, generous whitespace, subtle depth */
+.card {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  transition: transform 0.2s cubic-bezier(0.23, 1, 0.32, 1), 
+              box-shadow 0.2s cubic-bezier(0.23, 1, 0.32, 1),
+              border-color 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.05), 0 8px 10px -6px rgb(0 0 0 / 0.05);
+  border-color: #CBD5E1;
+}
+
+.card-feature {
+  padding: 2rem;
+}
+
+.card-stat {
+  padding: 2.5rem 2rem;
+  text-align: center;
+}
+
+/* Section spacing - Generous like AWS */
+.section {
+  padding-top: 5rem;
+  padding-bottom: 5rem;
+}
+
+@media (max-width: 768px) {
+  .section {
+    padding-top: 3.5rem;
+    padding-bottom: 3.5rem;
+  }
+  
+  h1, .h1 {
+    font-size: 2.5rem;
+  }
+}
+
+/* Trust bar & Stats */
+.trust-bar {
+  background: white;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* ROI Calculator Styles */
+.roi-input {
+  transition: all 0.15s ease;
+}
+
+.roi-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+  outline: none;
+}
+
+/* Chatbot - Professional floating */
+.chatbot-panel {
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  animation: slideUp 0.2s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Pricing Cards - Dominant */
+.pricing-card {
+  transition: all 0.3s cubic-bezier(0.23, 1.0, 0.32, 1);
+}
+
+.pricing-card.popular {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+  transform: scale(1.01);
+}
+
+.pricing-card:hover {
+  transform: translateY(-8px);
+}
+
+.pricing-card.popular:hover {
+  transform: scale(1.01) translateY(-8px);
+}
+
+/* Step indicators */
+.step-number {
+  width: 2.75rem;
+  height: 2.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: var(--color-navy);
+  color: white;
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+
+/* Table for dashboard */
+.dashboard-table th {
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+/* Micro interactions */
+.nav-link {
+  position: relative;
+  transition: color 0.15s ease;
+}
+
+.nav-link:hover {
+  color: var(--color-primary);
+}
+
+.nav-link:after {
+  content: '';
+  position: absolute;
+  width: 0;
+  height: 2px;
+  bottom: -2px;
+  left: 0;
+  background-color: var(--color-primary);
+  transition: width 0.2s ease;
+}
+
+.nav-link:hover:after {
+  width: 100%;
+}
+
+/* Accessibility focus */
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Footer */
+.footer-link {
+  transition: color 0.15s ease;
+}
+
+.footer-link:hover {
+  color: var(--color-primary);
+}
+
+/* Chat messages */
+.chat-message {
+  max-width: 85%;
+  padding: 0.875rem 1.25rem;
+  border-radius: 18px;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.chat-message.bot {
+  background: #F1F5F9;
+  color: var(--color-navy);
+  border-bottom-left-radius: 4px;
+}
+
+.chat-message.user {
+  background: var(--color-navy);
+  color: white;
+  border-bottom-right-radius: 4px;
+  margin-left: auto;
+}
+
+/* Responsive tweaks */
+@media (max-width: 640px) {
+  .h1 {
+    font-size: 2.25rem !important;
+    line-height: 1.1 !important;
+  }
+}
