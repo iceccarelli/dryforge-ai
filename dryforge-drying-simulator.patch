@@ -1,0 +1,1121 @@
+diff --git a/app/components/Header.tsx b/app/components/Header.tsx
+index 6e38739..e31b568 100644
+--- a/app/components/Header.tsx
++++ b/app/components/Header.tsx
+@@ -12,6 +12,7 @@ const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+ 
+ const navLinks = [
+   { href: "/products", label: "Products" },
++  { href: "/simulator", label: "Simulator" },
+   { href: "/solutions", label: "Solutions" },
+   { href: "/pricing", label: "Pricing" },
+   { href: "/resources", label: "Resources" },
+diff --git a/app/simulator/DryingSimulator.tsx b/app/simulator/DryingSimulator.tsx
+new file mode 100644
+index 0000000..ce6ee3b
+--- /dev/null
++++ b/app/simulator/DryingSimulator.tsx
+@@ -0,0 +1,415 @@
++"use client";
++
++import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
++import { Canvas } from "@react-three/fiber";
++import { OrbitControls, ContactShadows } from "@react-three/drei";
++import {
++  Play, Pause, RotateCcw, Wind, Droplets, Gauge, Timer, Thermometer,
++  Info, CheckCircle2, AlertTriangle, ArrowRight, Wand2,
++} from "lucide-react";
++import Room from "./scene/Room";
++import Equipment from "./scene/Equipment";
++import {
++  createInitialState, stepSim, recommendEquipment, ASSUMPTIONS,
++  DRY_GOAL_PCT, MAX_SIM_HOURS,
++  type SimConfig, type SimState, type WaterClass,
++} from "./lib/dryingModel";
++import { EQUIPMENT_CATALOG, DEFAULT_DEHU_PINTS_PER_DAY } from "./lib/equipment";
++
++const DEFAULT_CONFIG: SimConfig = {
++  room: { lengthM: 6, widthM: 4, heightM: 2.7, affectedFraction: 0.75, waterClass: 3 },
++  equipment: { airMovers: 4, dehumidifiers: 1, dehuPintsPerDay: DEFAULT_DEHU_PINTS_PER_DAY, injectionDrying: false },
++  env: { tempC: 21, startRH: 85 },
++};
++
++const SPEEDS = [2, 6, 24] as const; // simulated hours per real second
++
++function r(n: number, d = 0): string {
++  return n.toLocaleString("en-CA", { minimumFractionDigits: d, maximumFractionDigits: d });
++}
++
++function Stat({ icon, label, value, unit, tone = "default" }: {
++  icon: React.ReactNode; label: string; value: string; unit?: string;
++  tone?: "default" | "good" | "warn";
++}) {
++  const color = tone === "good" ? "text-emerald-400" : tone === "warn" ? "text-amber-400" : "text-white";
++  return (
++    <div className="flex items-center gap-2.5 rounded-md bg-black/45 px-3 py-2 backdrop-blur-sm">
++      <span className="text-slate-400">{icon}</span>
++      <div className="leading-tight">
++        <div className="text-[10px] uppercase tracking-wider text-slate-400">{label}</div>
++        <div className={`font-mono text-sm font-semibold ${color}`}>
++          {value}{unit && <span className="ml-0.5 text-[11px] text-slate-400">{unit}</span>}
++        </div>
++      </div>
++    </div>
++  );
++}
++
++export default function DryingSimulator() {
++  const [config, setConfig] = useState<SimConfig>(DEFAULT_CONFIG);
++  const [playing, setPlaying] = useState(false);
++  const [speed, setSpeed] = useState<number>(SPEEDS[1]);
++  // Client-only flag (false during SSR) without setState-in-effect.
++  const mounted = useSyncExternalStore(() => () => {}, () => true, () => false);
++
++  const simRef = useRef<SimState>(createInitialState(DEFAULT_CONFIG));
++  const [hud, setHud] = useState<SimState>(() => createInitialState(DEFAULT_CONFIG));
++
++  const playingRef = useRef(playing);
++  const speedRef = useRef(speed);
++  const configRef = useRef(config);
++
++  // Mirror latest values into refs (outside render) so the single RAF loop below
++  // always reads current state without re-subscribing.
++  useEffect(() => { playingRef.current = playing; }, [playing]);
++  useEffect(() => { speedRef.current = speed; }, [speed]);
++  useEffect(() => { configRef.current = config; }, [config]);
++
++  const reset = useCallback((cfg: SimConfig) => {
++    simRef.current = createInitialState(cfg);
++    setHud(simRef.current);
++    setPlaying(false);
++  }, []);
++
++  // Re-seed the simulation whenever the configuration changes.
++  useEffect(() => { reset(config); }, [config, reset]);
++
++  // Single animation loop: integrates the model in fixed sub-steps and pushes a
++  // throttled snapshot to the HUD. The 3D scene reads simRef directly per frame.
++  useEffect(() => {
++    let raf = 0;
++    let last = performance.now();
++    let hudLast = 0;
++    const loop = (t: number) => {
++      const dt = Math.min((t - last) / 1000, 0.05);
++      last = t;
++      const s = simRef.current;
++      if (playingRef.current && !s.goalReached && s.elapsedH < MAX_SIM_HOURS) {
++        let remaining = dt * speedRef.current;
++        const sub = 0.25;
++        while (remaining > 0) {
++          const stepH = Math.min(sub, remaining);
++          simRef.current = stepSim(simRef.current, configRef.current, stepH);
++          remaining -= stepH;
++          if (simRef.current.goalReached) break;
++        }
++        if (simRef.current.goalReached || simRef.current.elapsedH >= MAX_SIM_HOURS) {
++          setPlaying(false);
++        }
++      }
++      if (t - hudLast > 120) { hudLast = t; setHud(simRef.current); }
++      raf = requestAnimationFrame(loop);
++    };
++    raf = requestAnimationFrame(loop);
++    return () => cancelAnimationFrame(raf);
++  }, []);
++
++  // Keyboard: space = play/pause, R = reset.
++  useEffect(() => {
++    const onKey = (e: KeyboardEvent) => {
++      const tag = (e.target as HTMLElement)?.tagName;
++      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
++      if (e.code === "Space") { e.preventDefault(); setPlaying((p) => !p); }
++      if (e.key.toLowerCase() === "r") reset(configRef.current);
++    };
++    window.addEventListener("keydown", onKey);
++    return () => window.removeEventListener("keydown", onKey);
++  }, [reset]);
++
++  const rec = useMemo(() => recommendEquipment(config.room), [config.room]);
++  const stalled = hud.roomRH > 92 && !hud.goalReached && hud.elapsedH > 4;
++  const days = Math.floor(hud.elapsedH / 24);
++  const hrs = Math.round(hud.elapsedH % 24);
++  const elapsedLabel = days > 0 ? `${days}d ${hrs}h` : `${r(hud.elapsedH, 1)}h`;
++
++  const setRoom = (patch: Partial<SimConfig["room"]>) =>
++    setConfig((c) => ({ ...c, room: { ...c.room, ...patch } }));
++  const setEquip = (patch: Partial<SimConfig["equipment"]>) =>
++    setConfig((c) => ({ ...c, equipment: { ...c.equipment, ...patch } }));
++  const setEnv = (patch: Partial<SimConfig["env"]>) =>
++    setConfig((c) => ({ ...c, env: { ...c.env, ...patch } }));
++
++  const applyRecommendation = () =>
++    setEquip({ airMovers: rec.airMovers, dehumidifiers: rec.dehumidifiers });
++
++  const mailto = useMemo(() => {
++    const { room, equipment } = config;
++    const subject = "DryForge — structural drying plan review";
++    const body = [
++      "I modelled a drying scenario on the DryForge simulator:",
++      `Room: ${room.lengthM}m x ${room.widthM}m x ${room.heightM}m, ${Math.round(room.affectedFraction * 100)}% affected, Class ${room.waterClass}`,
++      `Setup: ${equipment.airMovers} air movers, ${equipment.dehumidifiers} LGR dehumidifier(s)${equipment.injectionDrying ? ", injection drying" : ""}`,
++      hud.goalReached ? `Modelled time to dry standard: ${elapsedLabel}` : "",
++      "",
++      "I'd like to talk about applying this to a real loss.",
++    ].filter(Boolean).join("\n");
++    return `mailto:pilot@dryforge.ai?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
++  }, [config, hud.goalReached, elapsedLabel]);
++
++  return (
++    <section className="mx-auto max-w-7xl px-4 sm:px-6 py-8">
++      <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
++        {/* ---------------- 3D stage ---------------- */}
++        <div className="relative">
++          <div
++            className="relative overflow-hidden rounded-xl border border-slate-800 bg-gradient-to-b from-[#0b1220] to-[#0F172A] aspect-[4/3] lg:aspect-auto lg:h-[560px]"
++            aria-label="3D structural-drying simulation. A water-damaged room with air movers and a dehumidifier; the floor and walls lighten as moisture is removed."
++            role="img"
++          >
++            {mounted ? (
++              <Canvas shadows camera={{ position: [6.5, 4.5, 6.5], fov: 42 }} dpr={[1, 1.75]}>
++                <color attach="background" args={["#0b1220"]} />
++                <ambientLight intensity={0.6} />
++                <directionalLight position={[6, 9, 4]} intensity={1.1} castShadow shadow-mapSize={[1024, 1024]} />
++                <pointLight position={[-4, 3, -3]} intensity={18} color="#fca86b" distance={14} />
++                <Room room={config.room} simRef={simRef} />
++                <Equipment room={config.room} equipment={config.equipment} running={playing} />
++                <ContactShadows position={[0, 0.01, 0]} opacity={0.4} scale={16} blur={2.4} far={4} />
++                <OrbitControls enableDamping minDistance={3} maxDistance={16} maxPolarAngle={Math.PI / 2.05} target={[0, 0.6, 0]} />
++              </Canvas>
++            ) : (
++              <div className="absolute inset-0 grid place-items-center text-slate-500 text-sm">Loading 3D scene…</div>
++            )}
++
++            {/* Metrics HUD */}
++            <div className="pointer-events-none absolute left-3 top-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
++              <Stat icon={<Timer className="h-4 w-4" />} label="Elapsed" value={elapsedLabel} />
++              <Stat icon={<Droplets className="h-4 w-4" />} label="Moisture" value={r(hud.materialMoisturePct)} unit="%"
++                tone={hud.goalReached ? "good" : hud.materialMoisturePct > 60 ? "warn" : "default"} />
++              <Stat icon={<Gauge className="h-4 w-4" />} label="Room RH" value={r(hud.roomRH)} unit="%"
++                tone={stalled ? "warn" : "default"} />
++              <Stat icon={<Wind className="h-4 w-4" />} label="GPP" value={r(hud.gpp)} />
++              <Stat icon={<Droplets className="h-4 w-4" />} label="Removed" value={r(hud.removedWaterL, 1)} unit="L" tone="good" />
++              <Stat icon={<Droplets className="h-4 w-4" />} label="Remaining" value={r(hud.materialWaterL, 1)} unit="L" />
++            </div>
++
++            {/* Status banners */}
++            {stalled && (
++              <div className="absolute right-3 top-3 flex items-center gap-2 rounded-md bg-amber-500/90 px-3 py-2 text-xs font-semibold text-amber-950">
++                <AlertTriangle className="h-4 w-4" /> RH saturated — add dehumidification capacity
++              </div>
++            )}
++            {hud.goalReached && (
++              <div className="absolute right-3 top-3 flex items-center gap-2 rounded-md bg-emerald-500/90 px-3 py-2 text-xs font-semibold text-emerald-950">
++                <CheckCircle2 className="h-4 w-4" /> Dry standard reached in {elapsedLabel}
++              </div>
++            )}
++
++            {/* Playback controls */}
++            <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-gradient-to-t from-black/70 to-transparent px-4 py-3">
++              <div className="flex items-center gap-2">
++                <button
++                  onClick={() => setPlaying((p) => !p)}
++                  className="inline-flex items-center gap-2 rounded-md bg-[#F97316] px-4 py-2 text-sm font-semibold text-white hover:bg-[#EA580C] transition-colors"
++                  aria-label={playing ? "Pause simulation" : "Play simulation"}
++                >
++                  {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
++                  {playing ? "Pause" : hud.elapsedH > 0 ? "Resume" : "Start drying"}
++                </button>
++                <button
++                  onClick={() => reset(config)}
++                  className="inline-flex items-center gap-2 rounded-md border border-white/20 bg-white/5 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-white/10 transition-colors"
++                  aria-label="Reset simulation"
++                >
++                  <RotateCcw className="h-4 w-4" /> Reset
++                </button>
++              </div>
++              <div className="flex items-center gap-1 rounded-md bg-black/50 p-1" role="group" aria-label="Simulation speed">
++                {SPEEDS.map((sp) => (
++                  <button
++                    key={sp}
++                    onClick={() => setSpeed(sp)}
++                    className={`rounded px-2.5 py-1 text-xs font-semibold transition-colors ${speed === sp ? "bg-[#F97316] text-white" : "text-slate-300 hover:text-white"}`}
++                  >
++                    {sp}×
++                  </button>
++                ))}
++              </div>
++            </div>
++          </div>
++
++          {/* Honest framing + assumptions */}
++          <p className="mt-3 text-xs text-slate-500">
++            Planning simulation using IICRC S500-style psychrometrics — not a live job or a guarantee. Drag to orbit; space bar plays/pauses.
++          </p>
++          <details className="mt-2 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
++            <summary className="cursor-pointer font-medium text-slate-800 flex items-center gap-2">
++              <Info className="h-4 w-4 text-[#F97316]" /> Model assumptions &amp; limitations
++            </summary>
++            <ul className="mt-3 list-disc space-y-1.5 pl-5">
++              {ASSUMPTIONS.map((a, i) => <li key={i}>{a}</li>)}
++            </ul>
++          </details>
++
++          {/* Live region for screen readers */}
++          <div className="sr-only" aria-live="polite">
++            {hud.goalReached
++              ? `Dry standard reached after ${elapsedLabel}.`
++              : `Stage ${hud.stage}. Material moisture ${r(hud.materialMoisturePct)} percent. Room humidity ${r(hud.roomRH)} percent.`}
++          </div>
++        </div>
++
++        {/* ---------------- Controls ---------------- */}
++        <aside className="space-y-5">
++          <div className="rounded-xl border border-slate-200 bg-white p-4">
++            <div className="flex items-center justify-between">
++              <h3 className="text-sm font-semibold text-slate-900">Scenario</h3>
++              <button
++                onClick={applyRecommendation}
++                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-[#EA580C] hover:bg-orange-50 transition-colors"
++                title={rec.note}
++              >
++                <Wand2 className="h-3.5 w-3.5" /> Auto-size ({rec.airMovers} AM · {rec.dehumidifiers} DH)
++              </button>
++            </div>
++
++            <div className="mt-4 space-y-4 text-sm">
++              <Range label="Room length" value={config.room.lengthM} min={2} max={14} step={0.5} unit="m"
++                onChange={(v) => setRoom({ lengthM: v })} />
++              <Range label="Room width" value={config.room.widthM} min={2} max={10} step={0.5} unit="m"
++                onChange={(v) => setRoom({ widthM: v })} />
++              <Range label="Ceiling height" value={config.room.heightM} min={2.2} max={4} step={0.1} unit="m"
++                onChange={(v) => setRoom({ heightM: v })} />
++              <Range label="Area affected" value={Math.round(config.room.affectedFraction * 100)} min={10} max={100} step={5} unit="%"
++                onChange={(v) => setRoom({ affectedFraction: v / 100 })} />
++              <div>
++                <label className="mb-1 block text-xs font-medium text-slate-500">Water class (IICRC)</label>
++                <div className="grid grid-cols-4 gap-1.5">
++                  {[1, 2, 3, 4].map((c) => (
++                    <button
++                      key={c}
++                      onClick={() => setRoom({ waterClass: c as WaterClass })}
++                      className={`rounded-md border py-1.5 text-sm font-semibold transition-colors ${config.room.waterClass === c ? "border-[#F97316] bg-orange-50 text-[#EA580C]" : "border-slate-200 text-slate-600 hover:border-slate-300"}`}
++                    >
++                      {c}
++                    </button>
++                  ))}
++                </div>
++              </div>
++            </div>
++          </div>
++
++          <div className="rounded-xl border border-slate-200 bg-white p-4">
++            <h3 className="text-sm font-semibold text-slate-900">Equipment</h3>
++            <div className="mt-4 space-y-4">
++              <Stepper label="Axial air movers" value={config.equipment.airMovers} min={0} max={12}
++                onChange={(v) => setEquip({ airMovers: v })} />
++              <Stepper label="LGR dehumidifiers" value={config.equipment.dehumidifiers} min={0} max={6}
++                onChange={(v) => setEquip({ dehumidifiers: v })} />
++              <Range label="Dehu rating" value={config.equipment.dehuPintsPerDay} min={50} max={240} step={10} unit="ppd"
++                onChange={(v) => setEquip({ dehuPintsPerDay: v })} />
++              <label className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2.5 text-sm">
++                <span className="font-medium text-slate-700">Injection / cavity drying</span>
++                <input
++                  type="checkbox"
++                  checked={config.equipment.injectionDrying}
++                  onChange={(e) => setEquip({ injectionDrying: e.target.checked })}
++                  className="h-4 w-4 accent-[#F97316]"
++                />
++              </label>
++            </div>
++          </div>
++
++          <div className="rounded-xl border border-slate-200 bg-white p-4">
++            <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
++              <Thermometer className="h-4 w-4 text-[#F97316]" /> Conditions
++            </h3>
++            <div className="mt-4 space-y-4">
++              <Range label="Air temperature" value={config.env.tempC} min={5} max={35} step={1} unit="°C"
++                onChange={(v) => setEnv({ tempC: v })} />
++              <Range label="Starting humidity" value={config.env.startRH} min={40} max={100} step={1} unit="%"
++                onChange={(v) => setEnv({ startRH: v })} />
++            </div>
++          </div>
++
++          {/* Conversion — honest email handoff, no fake CRM */}
++          <div className={`rounded-xl border p-4 transition-colors ${hud.goalReached ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-slate-50"}`}>
++            <p className="text-sm font-semibold text-slate-900">
++              {hud.goalReached ? "Nice — this plan hits the dry standard." : "Modelling a real loss?"}
++            </p>
++            <p className="mt-1 text-xs text-slate-600">
++              This is a planning tool. The next step for a real job is a conversation — send your scenario to the DryForge pilot team.
++            </p>
++            <a href={mailto} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md bg-[#F97316] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#EA580C] transition-colors">
++              Send this scenario <ArrowRight className="h-4 w-4" />
++            </a>
++          </div>
++        </aside>
++      </div>
++
++      {/* Equipment legend — real categories, honest framing */}
++      <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-3">
++        {EQUIPMENT_CATALOG.map((e) => (
++          <div key={e.kind} className="rounded-xl border border-slate-200 bg-white p-5">
++            <h4 className="text-sm font-semibold text-slate-900">{e.name}</h4>
++            <p className="mt-1.5 text-sm text-slate-600">{e.role}</p>
++            <dl className="mt-3 space-y-1">
++              {e.specs.map((s) => (
++                <div key={s.label} className="flex justify-between text-xs">
++                  <dt className="text-slate-500">{s.label}</dt>
++                  <dd className="font-mono font-medium text-slate-800">{s.value}</dd>
++                </div>
++              ))}
++            </dl>
++            <p className="mt-3 text-[11px] italic text-slate-400">{e.categoryExamples}</p>
++          </div>
++        ))}
++      </div>
++      <p className="mt-4 text-xs text-slate-500">
++        Dry standard target: material at or below {DRY_GOAL_PCT}% of its starting moisture load. Equipment shown is standard,
++        technician-placed restoration gear — not autonomous. DryForge&apos;s autonomous-placement and remote-monitoring layer is a
++        roadmap concept, not a shipping product.
++      </p>
++    </section>
++  );
++}
++
++/* --------------------------- small control widgets --------------------------- */
++
++function Range({ label, value, min, max, step, unit, onChange }: {
++  label: string; value: number; min: number; max: number; step: number; unit?: string;
++  onChange: (v: number) => void;
++}) {
++  return (
++    <div>
++      <div className="mb-1 flex items-center justify-between">
++        <label className="text-xs font-medium text-slate-500">{label}</label>
++        <span className="font-mono text-xs font-semibold text-slate-800">{value}{unit}</span>
++      </div>
++      <input
++        type="range"
++        min={min}
++        max={max}
++        step={step}
++        value={value}
++        onChange={(e) => onChange(parseFloat(e.target.value))}
++        className="w-full accent-[#F97316]"
++        aria-label={label}
++      />
++    </div>
++  );
++}
++
++function Stepper({ label, value, min, max, onChange }: {
++  label: string; value: number; min: number; max: number; onChange: (v: number) => void;
++}) {
++  return (
++    <div className="flex items-center justify-between">
++      <span className="text-xs font-medium text-slate-500">{label}</span>
++      <div className="flex items-center gap-2">
++        <button
++          onClick={() => onChange(Math.max(min, value - 1))}
++          className="grid h-7 w-7 place-items-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
++          aria-label={`Decrease ${label}`}
++        >−</button>
++        <span className="w-6 text-center font-mono text-sm font-semibold text-slate-900">{value}</span>
++        <button
++          onClick={() => onChange(Math.min(max, value + 1))}
++          className="grid h-7 w-7 place-items-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50"
++          aria-label={`Increase ${label}`}
++        >+</button>
++      </div>
++    </div>
++  );
++}
+diff --git a/app/simulator/lib/dryingModel.ts b/app/simulator/lib/dryingModel.ts
+new file mode 100644
+index 0000000..6dccb1e
+--- /dev/null
++++ b/app/simulator/lib/dryingModel.ts
+@@ -0,0 +1,232 @@
++/**
++ * dryingModel.ts
++ * -----------------------------------------------------------------------------
++ * A simplified structural-drying model grounded in real psychrometrics and
++ * IICRC S500 rules of thumb. It is a PLANNING MODEL, not a measurement: it shows
++ * how airflow (air movers) drives evaporation, how dehumidifier capacity caps the
++ * rate at which that vapor is pulled back out of the air, and how an undersized
++ * setup causes relative humidity to climb and drying to stall.
++ *
++ * Nothing here is a claim about a specific job. See ASSUMPTIONS for the
++ * disclosed simplifications.
++ */
++
++export type WaterClass = 1 | 2 | 3 | 4;
++
++export interface RoomSpec {
++  lengthM: number;
++  widthM: number;
++  heightM: number;
++  /** Fraction of the floor + lower walls that were wetted (0..1). */
++  affectedFraction: number;
++  /** IICRC-style class of water intrusion (1 = least, 4 = deeply bound). */
++  waterClass: WaterClass;
++}
++
++export interface EquipmentSpec {
++  /** Count of axial air movers directing airflow across wet surfaces. */
++  airMovers: number;
++  /** Count of LGR (low-grain-refrigerant) dehumidifiers. */
++  dehumidifiers: number;
++  /** Per-unit AHAM-style rating in US pints/day (water pulled from the air). */
++  dehuPintsPerDay: number;
++  /** Interstitial / injection drying for wall cavities and under flooring. */
++  injectionDrying: boolean;
++}
++
++export interface EnvSpec {
++  /** Ambient air temperature (deg C). */
++  tempC: number;
++  /** Starting relative humidity of the room (%). */
++  startRH: number;
++}
++
++export interface SimConfig {
++  room: RoomSpec;
++  equipment: EquipmentSpec;
++  env: EnvSpec;
++}
++
++export type DryingStage =
++  | "extraction"
++  | "evaporation"
++  | "dehumidification"
++  | "dry-standard";
++
++export interface SimState {
++  elapsedH: number;
++  /** Water still bound in materials (litres). */
++  materialWaterL: number;
++  /** Water currently airborne as vapour in the room (litres, above dry baseline). */
++  airborneWaterL: number;
++  /** Cumulative water removed by dehumidifiers (litres). */
++  removedWaterL: number;
++  /** Peak of materialWaterL at t=0, used for the % readout. */
++  initialMaterialWaterL: number;
++  roomRH: number;
++  /** Grains of moisture per pound of dry air (restoration's working unit). */
++  gpp: number;
++  /** 100 = fully wet at t0; drops toward the dry standard. */
++  materialMoisturePct: number;
++  /** 0..1 visual wetness that drives the floor/wall shading. */
++  wetness: number;
++  stage: DryingStage;
++  goalReached: boolean;
++}
++
++const PATM_KPA = 101.325;
++const AIR_DENSITY = 1.2; // kg/m^3
++const PINT_TO_L = 0.473176;
++/** Bound water at t0 per m^2 of affected area, by water class (litres/m^2). */
++const CLASS_WATER_PER_M2: Record<WaterClass, number> = { 1: 2, 2: 6, 3: 12, 4: 18 };
++/** Return-to-dry target: material considered dry at/below this % of its t0 load. */
++export const DRY_GOAL_PCT = 12;
++export const MAX_SIM_HOURS = 168; // one week horizon
++
++/** Saturation vapour pressure (kPa) via the Magnus formula. */
++function satVaporPressureKpa(tempC: number): number {
++  return 0.61078 * Math.exp((17.27 * tempC) / (tempC + 237.3));
++}
++
++/** Humidity ratio (kg water / kg dry air) at a given temperature and RH. */
++function humidityRatio(tempC: number, rhPct: number): number {
++  const pw = (rhPct / 100) * satVaporPressureKpa(tempC);
++  return (0.62198 * pw) / (PATM_KPA - pw);
++}
++
++function clamp(v: number, lo: number, hi: number): number {
++  return Math.min(hi, Math.max(lo, v));
++}
++
++/** Dry-air mass in the room (kg). */
++function dryAirMassKg(room: RoomSpec): number {
++  return room.lengthM * room.widthM * room.heightM * AIR_DENSITY;
++}
++
++/** Airborne water (litres ~= kg) at a given RH for this room and temperature. */
++function airborneWaterAtRH(config: SimConfig, rhPct: number): number {
++  return humidityRatio(config.env.tempC, rhPct) * dryAirMassKg(config.room);
++}
++
++export interface EquipmentRecommendation {
++  airMovers: number;
++  dehumidifiers: number;
++  note: string;
++}
++
++/**
++ * IICRC-style rule-of-thumb sizing, surfaced so the operator can see how far
++ * a given setup is from the textbook recommendation. Deliberately approximate.
++ */
++export function recommendEquipment(room: RoomSpec): EquipmentRecommendation {
++  const floorArea = room.lengthM * room.widthM;
++  const affected = Math.max(floorArea * room.affectedFraction, 1);
++  // ~1 air mover per 5 m^2 of affected area, class-weighted.
++  const classFactor = 1 + (room.waterClass - 1) * 0.15;
++  const airMovers = Math.max(1, Math.round((affected / 5) * classFactor));
++  // Dehu sized to the room volume and class; each ~90 pint LGR covers ~55 m^3.
++  const volume = floorArea * room.heightM;
++  const dehumidifiers = Math.max(1, Math.round((volume / 55) * classFactor));
++  return {
++    airMovers,
++    dehumidifiers,
++    note: "Rule-of-thumb only (IICRC S500 style). A real drying plan is set on-site with moisture meters and a psychrometric log.",
++  };
++}
++
++export function createInitialState(config: SimConfig): SimState {
++  const { room, env } = config;
++  const floorArea = room.lengthM * room.widthM;
++  const affectedArea = Math.max(floorArea * room.affectedFraction, 0);
++  const materialWaterL = affectedArea * CLASS_WATER_PER_M2[room.waterClass];
++  const airborneWaterL = airborneWaterAtRH(config, env.startRH);
++  const gpp = humidityRatio(env.tempC, env.startRH) * 7000; // grains/lb dry air
++
++  return {
++    elapsedH: 0,
++    materialWaterL,
++    airborneWaterL,
++    removedWaterL: 0,
++    initialMaterialWaterL: Math.max(materialWaterL, 0.0001),
++    roomRH: env.startRH,
++    gpp,
++    materialMoisturePct: 100,
++    wetness: 1,
++    stage: "extraction",
++    goalReached: false,
++  };
++}
++
++/** Advance the simulation by dtHours. Pure: returns a new state object. */
++export function stepSim(prev: SimState, config: SimConfig, dtHours: number): SimState {
++  if (prev.goalReached) return prev;
++
++  const { room, equipment, env } = config;
++  const floorArea = room.lengthM * room.widthM;
++  const affectedArea = Math.max(floorArea * room.affectedFraction, 0.1);
++
++  // --- Current air state -----------------------------------------------------
++  const saturatedWaterL = airborneWaterAtRH(config, 100);
++  const roomRH = clamp((prev.airborneWaterL / saturatedWaterL) * 100, 0, 100);
++
++  // --- Evaporation (material -> air) ----------------------------------------
++  // Airflow effectiveness saturates as air movers approach the recommendation.
++  const rec = recommendEquipment(room);
++  const airflow = 1 - Math.exp(-equipment.airMovers / Math.max(1, rec.airMovers));
++  // Warmer air evaporates faster; cold, damp rooms crawl.
++  const tempFactor = clamp((env.tempC - 4) / 22, 0.15, 1.3);
++  // Evaporation stalls as the air approaches saturation (the key teaching point).
++  const vpDeficit = clamp(1 - roomRH / 100, 0, 1);
++  const cavityBoost = equipment.injectionDrying ? 1.25 : room.waterClass >= 3 ? 0.7 : 1;
++  const kEvap = 0.11; // litres per m^2 per hour at ideal conditions
++  let evap = kEvap * affectedArea * airflow * tempFactor * vpDeficit * cavityBoost * dtHours;
++  evap = Math.min(evap, prev.materialWaterL);
++
++  // --- Dehumidification (air -> collected) -----------------------------------
++  // LGR output derates at low grain depth; here we scale gently with RH.
++  const dehuConditionFactor = clamp(0.45 + roomRH / 140, 0.45, 1);
++  const dehuCapacityLperH =
++    (equipment.dehumidifiers * equipment.dehuPintsPerDay * PINT_TO_L) / 24;
++  const removable = prev.airborneWaterL + evap - airborneWaterAtRH(config, 35); // don't dry below ~35% RH
++  const remove = clamp(dehuCapacityLperH * dehuConditionFactor * dtHours, 0, Math.max(removable, 0));
++
++  // --- Integrate -------------------------------------------------------------
++  const materialWaterL = Math.max(prev.materialWaterL - evap, 0);
++  const airborneWaterL = Math.max(prev.airborneWaterL + evap - remove, 0);
++  const removedWaterL = prev.removedWaterL + remove;
++  const elapsedH = prev.elapsedH + dtHours;
++
++  const newRH = clamp((airborneWaterL / saturatedWaterL) * 100, 0, 100);
++  const gpp = (humidityRatio(env.tempC, newRH)) * 7000;
++  const materialMoisturePct = (materialWaterL / prev.initialMaterialWaterL) * 100;
++  const wetness = clamp(materialMoisturePct / 100, 0, 1);
++  const goalReached = materialMoisturePct <= DRY_GOAL_PCT;
++
++  let stage: DryingStage = "dehumidification";
++  if (goalReached) stage = "dry-standard";
++  else if (elapsedH < 1.5) stage = "extraction";
++  else if (airflow < 0.5) stage = "evaporation";
++
++  return {
++    elapsedH,
++    materialWaterL,
++    airborneWaterL,
++    removedWaterL,
++    initialMaterialWaterL: prev.initialMaterialWaterL,
++    roomRH: newRH,
++    gpp,
++    materialMoisturePct,
++    wetness,
++    stage,
++    goalReached,
++  };
++}
++
++export const ASSUMPTIONS: string[] = [
++  "Single well-mixed room; no coupling to adjacent spaces or outdoor air.",
++  "Bound water at t0 is estimated from affected area x an illustrative litres/m^2 per water class, not measured.",
++  "Evaporation uses a lumped coefficient scaled by airflow, temperature and vapour-pressure deficit; it is not a CFD surface model.",
++  "Dehumidifier output uses the per-unit pint/day rating with a mild RH derate; real LGR performance varies with grain depth and coil temperature.",
++  "Drying is capped so the room is not dried below ~35% RH; the 'dry standard' is a % of the t0 load, not a moisture-meter reading against unaffected material.",
++  "This is a planning visualisation. A real job is scoped on-site with penetrating/non-penetrating meters and a daily psychrometric log per IICRC S500.",
++];
+diff --git a/app/simulator/lib/equipment.ts b/app/simulator/lib/equipment.ts
+new file mode 100644
+index 0000000..b67151f
+--- /dev/null
++++ b/app/simulator/lib/equipment.ts
+@@ -0,0 +1,66 @@
++/**
++ * equipment.ts
++ * -----------------------------------------------------------------------------
++ * The equipment in the simulator maps to REAL categories of restoration gear
++ * that crews actually deploy — axial air movers, LGR dehumidifiers, and
++ * interstitial/injection drying systems. The spec ranges below are
++ * representative of those product categories (e.g. Dri-Eaz / Phoenix / B-Air /
++ * Injectidry class hardware); they are illustrative, not a quote or endorsement
++ * of any brand.
++ *
++ * IMPORTANT (honesty policy, see README): none of this equipment is autonomous
++ * today. It is positioned and monitored by a technician. DryForge's
++ * autonomous-placement + remote-monitoring layer is a concept on the roadmap,
++ * labelled as such — it is not a shipping product.
++ */
++
++export type EquipmentKind = "airMover" | "dehumidifier" | "injection";
++
++export interface EquipmentCategory {
++  kind: EquipmentKind;
++  name: string;
++  /** What it does and the manual task it reduces. */
++  role: string;
++  /** Visualisable, representative spec range for the category. */
++  specs: { label: string; value: string }[];
++  categoryExamples: string;
++}
++
++export const EQUIPMENT_CATALOG: EquipmentCategory[] = [
++  {
++    kind: "airMover",
++    name: "Axial air mover",
++    role: "Drives high-volume airflow across wet surfaces to accelerate evaporation. Replaces manually shuffling fans to chase damp spots.",
++    specs: [
++      { label: "Airflow", value: "1,000-3,500 CFM" },
++      { label: "Draw", value: "1.0-2.5 A" },
++      { label: "Placement", value: "~1 per 5 m of wet wall" },
++    ],
++    categoryExamples: "Category comparable to Dri-Eaz Velo / B-Air VP-25 class units.",
++  },
++  {
++    kind: "dehumidifier",
++    name: "LGR dehumidifier",
++    role: "Pulls evaporated moisture back out of the air so RH does not climb and stall drying. This is the rate ceiling of the whole system.",
++    specs: [
++      { label: "Extraction (AHAM)", value: "70-150 pints/day" },
++      { label: "Process air", value: "180-400 CFM" },
++      { label: "Coverage", value: "~40-70 m3 per unit" },
++    ],
++    categoryExamples: "Category comparable to Dri-Eaz LGR 7000XLi / Phoenix R250 class units.",
++  },
++  {
++    kind: "injection",
++    name: "Interstitial / injection drying",
++    role: "Forces dry air into wall cavities and under hardwood/subfloor through small ports, drying spaces air movers can't reach.",
++    specs: [
++      { label: "Outputs", value: "up to ~19 hoses" },
++      { label: "Airflow", value: "~130-320 CFM total" },
++      { label: "Use", value: "cavities, under flooring" },
++    ],
++    categoryExamples: "Category comparable to Injectidry HP60 / Dri-Eaz TrapTight class systems.",
++  },
++];
++
++/** Default per-unit dehumidifier rating used by the model (US pints/day, AHAM-style). */
++export const DEFAULT_DEHU_PINTS_PER_DAY = 100;
+diff --git a/app/simulator/page.tsx b/app/simulator/page.tsx
+new file mode 100644
+index 0000000..43b8415
+--- /dev/null
++++ b/app/simulator/page.tsx
+@@ -0,0 +1,40 @@
++import type { Metadata } from "next";
++import Header from "../components/Header";
++import Footer from "../components/Footer";
++import DryingSimulator from "./DryingSimulator";
++import { Boxes } from "lucide-react";
++
++export const metadata: Metadata = {
++  title: "Structural Drying Simulator",
++  description:
++    "An interactive, browser-based structural-drying simulator: set the room, water class, air movers and dehumidifiers, and watch a psychrometric drying curve play out. A planning model built on IICRC S500-style rules of thumb — not a live job or a guarantee.",
++  alternates: { canonical: "https://dryforge.ai/simulator" },
++};
++
++export default function SimulatorPage() {
++  return (
++    <div className="min-h-screen bg-[#FAFBFC] text-slate-950">
++      <Header />
++
++      <section className="border-b border-slate-200 bg-white">
++        <div className="mx-auto max-w-7xl px-4 sm:px-6 pt-12 pb-8">
++          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold tracking-[1px] text-slate-600">
++            <Boxes className="h-3.5 w-3.5 text-[#F97316]" /> PLANNING SIMULATION • IICRC S500-STYLE MODEL
++          </div>
++          <h1 className="mt-5 text-4xl sm:text-5xl font-extrabold tracking-[-2px] text-slate-900 max-w-3xl">
++            Watch a room dry out — <span className="text-[#F97316]">before</span> the truck rolls.
++          </h1>
++          <p className="mt-4 max-w-2xl text-lg text-slate-600">
++            Set the room, the water class, and the equipment. The simulator runs a real psychrometric
++            drying curve so you can see how airflow and dehumidification interact — and where an
++            undersized setup stalls. It&apos;s a planning aid, not a promise: every assumption is disclosed.
++          </p>
++        </div>
++      </section>
++
++      <DryingSimulator />
++
++      <Footer />
++    </div>
++  );
++}
+diff --git a/app/simulator/scene/Equipment.tsx b/app/simulator/scene/Equipment.tsx
+new file mode 100644
+index 0000000..e0a573e
+--- /dev/null
++++ b/app/simulator/scene/Equipment.tsx
+@@ -0,0 +1,160 @@
++"use client";
++
++import { useRef } from "react";
++import { useFrame } from "@react-three/fiber";
++import * as THREE from "three";
++import type { EquipmentSpec, RoomSpec } from "../lib/dryingModel";
++
++const ORANGE = "#F97316";
++const DARK = "#1E293B";
++const STEEL = "#94A3B8";
++
++function AirMover({ position, running }: { position: [number, number, number]; running: boolean }) {
++  const fan = useRef<THREE.Group>(null);
++  useFrame((_, delta) => {
++    if (fan.current && running) fan.current.rotation.z -= delta * 22;
++  });
++  return (
++    <group position={position} rotation={[0, Math.PI, 0]}>
++      {/* housing, tilted up like a real snail-style air mover */}
++      <mesh castShadow position={[0, 0.16, 0]} rotation={[-0.5, 0, 0]}>
++        <cylinderGeometry args={[0.22, 0.26, 0.2, 24]} />
++        <meshStandardMaterial color={ORANGE} roughness={0.5} metalness={0.1} />
++      </mesh>
++      {/* fan hub + blades */}
++      <group ref={fan} position={[0, 0.2, 0.11]} rotation={[-0.5, 0, 0]}>
++        <mesh>
++          <cylinderGeometry args={[0.04, 0.04, 0.06, 12]} />
++          <meshStandardMaterial color={DARK} />
++        </mesh>
++        {[0, 1, 2, 3, 4].map((b) => (
++          <mesh key={b} rotation={[0, 0, (b / 5) * Math.PI * 2]} position={[0, 0, 0.02]}>
++            <boxGeometry args={[0.02, 0.17, 0.01]} />
++            <meshStandardMaterial color={DARK} />
++          </mesh>
++        ))}
++      </group>
++      {/* feet */}
++      <mesh position={[0, 0.02, 0]}>
++        <boxGeometry args={[0.4, 0.04, 0.34]} />
++        <meshStandardMaterial color={DARK} roughness={0.8} />
++      </mesh>
++    </group>
++  );
++}
++
++function Dehumidifier({ position, running }: { position: [number, number, number]; running: boolean }) {
++  const duct = useRef<THREE.Mesh>(null);
++  useFrame((state) => {
++    if (duct.current && running) {
++      const s = 1 + Math.sin(state.clock.elapsedTime * 6) * 0.04;
++      duct.current.scale.set(1, s, 1);
++    }
++  });
++  return (
++    <group position={position}>
++      <mesh castShadow position={[0, 0.35, 0]}>
++        <boxGeometry args={[0.55, 0.7, 0.5]} />
++        <meshStandardMaterial color={STEEL} roughness={0.55} metalness={0.2} />
++      </mesh>
++      {/* grille */}
++      <mesh position={[0, 0.42, 0.26]}>
++        <boxGeometry args={[0.42, 0.28, 0.02]} />
++        <meshStandardMaterial color={DARK} />
++      </mesh>
++      {/* orange status strip */}
++      <mesh position={[0, 0.66, 0.26]}>
++        <boxGeometry args={[0.42, 0.05, 0.02]} />
++        <meshStandardMaterial color={ORANGE} emissive={running ? ORANGE : "#000000"} emissiveIntensity={running ? 0.6 : 0} />
++      </mesh>
++      {/* flexible outlet duct */}
++      <mesh ref={duct} position={[0.3, 0.5, 0]} rotation={[0, 0, -Math.PI / 2]}>
++        <cylinderGeometry args={[0.07, 0.07, 0.4, 12]} />
++        <meshStandardMaterial color={ORANGE} roughness={0.7} />
++      </mesh>
++      {/* casters */}
++      {[[-0.2, -0.18], [0.2, -0.18], [-0.2, 0.18], [0.2, 0.18]].map(([x, z], i) => (
++        <mesh key={i} position={[x, 0.03, z]}>
++          <sphereGeometry args={[0.04, 8, 8]} />
++          <meshStandardMaterial color={DARK} />
++        </mesh>
++      ))}
++    </group>
++  );
++}
++
++function InjectionSystem({ position, wallZ }: { position: [number, number, number]; wallZ: number }) {
++  const hoses = [-0.3, -0.1, 0.1, 0.3];
++  return (
++    <group position={position}>
++      <mesh castShadow position={[0, 0.18, 0]}>
++        <boxGeometry args={[0.5, 0.34, 0.3]} />
++        <meshStandardMaterial color={DARK} roughness={0.6} />
++      </mesh>
++      <mesh position={[0, 0.34, 0.16]}>
++        <boxGeometry args={[0.4, 0.06, 0.02]} />
++        <meshStandardMaterial color={ORANGE} />
++      </mesh>
++      {hoses.map((x, i) => {
++        const len = Math.abs(wallZ - position[2]);
++        return (
++          <mesh key={i} position={[x, 0.12, wallZ / 2 - position[2] / 2]} rotation={[Math.PI / 2, 0, 0]}>
++            <cylinderGeometry args={[0.015, 0.015, len, 8]} />
++            <meshStandardMaterial color="#475569" />
++          </mesh>
++        );
++      })}
++    </group>
++  );
++}
++
++interface EquipmentProps {
++  room: RoomSpec;
++  equipment: EquipmentSpec;
++  running: boolean;
++}
++
++export default function Equipment({ room, equipment, running }: EquipmentProps) {
++  const L = room.lengthM;
++  const W = room.widthM;
++
++  // Distribute air movers evenly around an inner ring facing the walls.
++  const movers: [number, number, number][] = [];
++  const n = Math.max(0, Math.min(equipment.airMovers, 12));
++  for (let i = 0; i < n; i++) {
++    const t = (i + 0.5) / n;
++    const ex = L / 2 - 0.5;
++    const ez = W / 2 - 0.5;
++    const perim = t * 2 * (ex + ez);
++    let x: number, z: number;
++    if (perim < 2 * ex) {
++      x = -ex + perim;
++      z = -ez;
++    } else {
++      x = ex;
++      z = -ez + (perim - 2 * ex);
++    }
++    movers.push([x, 0, z]);
++  }
++
++  const dehus: [number, number, number][] = [];
++  const dn = Math.max(0, Math.min(equipment.dehumidifiers, 6));
++  for (let i = 0; i < dn; i++) {
++    const spread = dn > 1 ? (i / (dn - 1) - 0.5) * (L - 1.4) : 0;
++    dehus.push([spread, 0, W / 2 - 0.55]);
++  }
++
++  return (
++    <group>
++      {movers.map((p, i) => (
++        <AirMover key={`m${i}`} position={p} running={running} />
++      ))}
++      {dehus.map((p, i) => (
++        <Dehumidifier key={`d${i}`} position={p} running={running} />
++      ))}
++      {equipment.injectionDrying && (
++        <InjectionSystem position={[-L / 2 + 0.6, 0, 0]} wallZ={-W / 2} />
++      )}
++    </group>
++  );
++}
+diff --git a/app/simulator/scene/Room.tsx b/app/simulator/scene/Room.tsx
+new file mode 100644
+index 0000000..df299e9
+--- /dev/null
++++ b/app/simulator/scene/Room.tsx
+@@ -0,0 +1,138 @@
++"use client";
++
++import { useMemo, useRef } from "react";
++import { useFrame } from "@react-three/fiber";
++import * as THREE from "three";
++import type { RoomSpec, SimState } from "../lib/dryingModel";
++
++interface RoomProps {
++  room: RoomSpec;
++  simRef: React.MutableRefObject<SimState>;
++}
++
++const DRY_FLOOR = new THREE.Color("#c9bfa9"); // dry subfloor / screed
++const WET_FLOOR = new THREE.Color("#4f4636"); // saturated, dark
++const DRY_WALL = new THREE.Color("#eef1f4");
++const STAIN = new THREE.Color("#a98a5f");
++
++/** Deterministic PRNG (mulberry32) — keeps texture generation pure across renders. */
++function mulberry32(seed: number): () => number {
++  let a = seed;
++  return () => {
++    a |= 0;
++    a = (a + 0x6d2b79f5) | 0;
++    let t = Math.imul(a ^ (a >>> 15), 1 | a);
++    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
++    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
++  };
++}
++
++/** Procedural speckled floor texture so the surface reads as a real material. */
++function useFloorTexture(): THREE.CanvasTexture {
++  return useMemo(() => {
++    const size = 256;
++    const rand = mulberry32(1337);
++    const canvas = document.createElement("canvas");
++    canvas.width = size;
++    canvas.height = size;
++    const ctx = canvas.getContext("2d")!;
++    ctx.fillStyle = "#ffffff";
++    ctx.fillRect(0, 0, size, size);
++    for (let i = 0; i < 5200; i++) {
++      const g = 200 + Math.floor(rand() * 55);
++      ctx.fillStyle = `rgba(${g},${g},${g},0.5)`;
++      ctx.fillRect(rand() * size, rand() * size, 1.4, 1.4);
++    }
++    const tex = new THREE.CanvasTexture(canvas);
++    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
++    return tex;
++  }, []);
++}
++
++export default function Room({ room, simRef }: RoomProps) {
++  const L = room.lengthM;
++  const W = room.widthM;
++  const H = room.heightM;
++
++  const floorMat = useRef<THREE.MeshStandardMaterial>(null);
++  const filmMat = useRef<THREE.MeshStandardMaterial>(null);
++  const stainRefs = useRef<THREE.Mesh[]>([]);
++  const floorTex = useFloorTexture();
++
++  useMemo(() => {
++    floorTex.repeat.set(Math.max(1, L / 1.5), Math.max(1, W / 1.5));
++  }, [floorTex, L, W]);
++
++  useFrame(() => {
++    const wet = simRef.current.wetness;
++    if (floorMat.current) {
++      floorMat.current.color.copy(DRY_FLOOR).lerp(WET_FLOOR, wet);
++      floorMat.current.roughness = THREE.MathUtils.lerp(0.92, 0.2, wet);
++      floorMat.current.metalness = THREE.MathUtils.lerp(0.0, 0.15, wet);
++    }
++    if (filmMat.current) {
++      filmMat.current.opacity = wet * 0.55;
++    }
++    const stainH = 0.35 + wet * 0.9; // wicking height recedes as it dries
++    for (const m of stainRefs.current) {
++      if (!m) continue;
++      m.scale.y = stainH;
++      m.position.y = stainH / 2 + 0.02;
++      const mat = m.material as THREE.MeshStandardMaterial;
++      mat.opacity = 0.15 + wet * 0.6;
++    }
++  });
++
++  const walls: { pos: [number, number, number]; rot: [number, number, number]; w: number }[] = [
++    { pos: [0, H / 2, -W / 2], rot: [0, 0, 0], w: L },
++    { pos: [-L / 2, H / 2, 0], rot: [0, Math.PI / 2, 0], w: W },
++    { pos: [L / 2, H / 2, 0], rot: [0, -Math.PI / 2, 0], w: W },
++  ];
++
++  return (
++    <group>
++      {/* Floor */}
++      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, 0, 0]}>
++        <planeGeometry args={[L, W]} />
++        <meshStandardMaterial ref={floorMat} map={floorTex} color={WET_FLOOR} roughness={0.2} />
++      </mesh>
++      {/* Water film (sheen that fades as it dries) */}
++      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]}>
++        <planeGeometry args={[L * 0.98, W * 0.98]} />
++        <meshStandardMaterial
++          ref={filmMat}
++          color="#2b3a4a"
++          roughness={0.05}
++          metalness={0.4}
++          transparent
++          opacity={0.5}
++        />
++      </mesh>
++
++      {/* Walls + wicking stain */}
++      {walls.map((wall, i) => (
++        <group key={i} position={wall.pos} rotation={wall.rot}>
++          <mesh receiveShadow>
++            <planeGeometry args={[wall.w, H]} />
++            <meshStandardMaterial color={DRY_WALL} roughness={0.95} side={THREE.DoubleSide} />
++          </mesh>
++          {/* moisture stain rising from the baseboard */}
++          <mesh
++            ref={(el) => {
++              if (el) stainRefs.current[i] = el;
++            }}
++            position={[0, 0.6, 0.01]}
++          >
++            <planeGeometry args={[wall.w, 1]} />
++            <meshStandardMaterial color={STAIN} transparent opacity={0.5} roughness={0.9} />
++          </mesh>
++          {/* baseboard */}
++          <mesh position={[0, 0.05 - H / 2, 0.02]}>
++            <boxGeometry args={[wall.w, 0.1, 0.03]} />
++            <meshStandardMaterial color="#d7d2c8" roughness={0.8} />
++          </mesh>
++        </group>
++      ))}
++    </group>
++  );
++}
+diff --git a/package.json b/package.json
+index de0885d..b9c3489 100644
+--- a/package.json
++++ b/package.json
+@@ -11,6 +11,9 @@
+   "dependencies": {
+     "@clerk/nextjs": "^6.9.6",
+     "@hookform/resolvers": "^3.9.1",
++    "@react-three/drei": "^10.7.0",
++    "@react-three/fiber": "^9.6.0",
++    "three": "^0.185.0",
+     "@radix-ui/react-accordion": "^1.2.2",
+     "@radix-ui/react-dialog": "^1.1.4",
+     "@radix-ui/react-popover": "^1.1.4",
+@@ -31,6 +34,7 @@
+   "devDependencies": {
+     "@tailwindcss/postcss": "^4",
+     "@types/node": "^20",
++    "@types/three": "^0.185.0",
+     "@types/react": "^19",
+     "@types/react-dom": "^19",
+     "eslint": "^9",
