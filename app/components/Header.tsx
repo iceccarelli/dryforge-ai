@@ -12,6 +12,8 @@ const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
 const navLinks = [
   { href: "/products", label: "Products" },
+  { href: "/robots-demo", label: "Robots" },
+  { href: "/simulator", label: "Simulator" },
   { href: "/solutions", label: "Solutions" },
   { href: "/pricing", label: "Pricing" },
   { href: "/resources", label: "Resources" },
