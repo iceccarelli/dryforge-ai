@@ -1,0 +1,1091 @@
+diff --git a/app/components/robots3d/DrywallRobots.tsx b/app/components/robots3d/DrywallRobots.tsx
+index bdac747..96f1e0e 100644
+--- a/app/components/robots3d/DrywallRobots.tsx
++++ b/app/components/robots3d/DrywallRobots.tsx
+@@ -12,57 +12,64 @@ const GYPSUM = "#EDE9E0";
+ function lerp(a: number, b: number, t: number) { return a + (b - a) * t; }
+ function clamp01(t: number) { return Math.min(1, Math.max(0, t)); }
+ 
+-/* ---- shared wheeled base ---- */
++export interface RobotProps {
++  running: boolean;
++  accent: string;
++  /** When provided, drives the machine through the pressed job (0..1). */
++  progressRef?: React.MutableRefObject<number>;
++  task?: string;
++  idleRate?: number;
++}
++
++function useU(progressRef: React.MutableRefObject<number> | undefined, idleRate: number) {
++  const ref = useRef(0);
++  return (clock: number) => {
++    ref.current = progressRef ? progressRef.current : (clock * idleRate) % 1;
++    return ref.current;
++  };
++}
++
++/* shared */
+ function Wheels({ running, w = 0.6, d = 0.44, y = 0.09 }: { running: boolean; w?: number; d?: number; y?: number }) {
+   const g = useRef<THREE.Group>(null);
+   useFrame((_, dt) => { if (g.current && running) g.current.children.forEach((c) => (c.rotation.x -= dt * 6)); });
+-  const xs = [-w / 2, w / 2];
+-  const zs = [-d / 2, d / 2];
+   return (
+     <group ref={g}>
+-      {xs.flatMap((x) => zs.map((z) => (
++      {[-w / 2, w / 2].flatMap((x) => [-d / 2, d / 2].map((z) => (
+         <mesh key={`${x}${z}`} position={[x, y, z]} rotation={[0, 0, Math.PI / 2]}>
+-          <cylinderGeometry args={[0.1, 0.1, 0.08, 16]} />
+-          <meshStandardMaterial color={DARK} roughness={0.7} />
++          <cylinderGeometry args={[0.1, 0.1, 0.08, 16]} /><meshStandardMaterial color={DARK} roughness={0.7} />
+         </mesh>
+       )))}
+     </group>
+   );
+ }
+-
+ function Base({ color, w = 0.7, h = 0.24, d = 0.55 }: { color: string; w?: number; h?: number; d?: number }) {
+-  return (
+-    <mesh castShadow position={[0, 0.22, 0]}>
+-      <boxGeometry args={[w, h, d]} />
+-      <meshStandardMaterial color={color} roughness={0.5} metalness={0.15} />
+-    </mesh>
+-  );
++  return (<mesh castShadow position={[0, 0.22, 0]}><boxGeometry args={[w, h, d]} /><meshStandardMaterial color={color} roughness={0.5} metalness={0.15} /></mesh>);
+ }
+ 
+ /* ============================ 1. FINISHER ============================ */
+-function Finisher({ running, accent }: { running: boolean; accent: string }) {
++function Finisher({ running, accent, progressRef, task, idleRate = 0.12 }: RobotProps) {
+   const shoulder = useRef<THREE.Group>(null);
+   const forearm = useRef<THREE.Group>(null);
+   const disc = useRef<THREE.Mesh>(null);
++  const getU = useU(progressRef, idleRate);
+   useFrame((s) => {
+-    const t = running ? s.clock.getElapsedTime() : 0;
+-    const sweep = Math.sin(t * 1.1); // up/down pass
+-    if (shoulder.current) shoulder.current.rotation.x = lerp(-0.15, -0.95, (sweep + 1) / 2);
+-    if (forearm.current) forearm.current.rotation.x = lerp(0.5, 1.2, (sweep + 1) / 2);
+-    if (disc.current && running) disc.current.rotation.z -= 0.6;
++    const u = getU(s.clock.getElapsedTime());
++    const lanes = 4; const lf = u * lanes; const lane = Math.min(lanes - 1, Math.floor(lf)); const frac = lf - lane;
++    const dir = lane % 2 === 0; const yaw = dir ? -0.5 + frac : 0.5 - frac;
++    if (shoulder.current) { shoulder.current.rotation.y = yaw; shoulder.current.rotation.x = -0.55 + Math.sin(u * Math.PI * 10) * 0.12; }
++    if (forearm.current) forearm.current.rotation.x = 0.9;
++    const sanding = task === "finish" ? u > 0.55 : true;
++    if (disc.current && running) disc.current.rotation.z -= sanding ? 0.9 : 0.5;
+   });
+   return (
+     <group>
+-      <Base color={accent} />
+-      <Wheels running={running} />
+-      {/* vertical mast */}
++      <Base color={accent} /><Wheels running={running} />
+       <mesh position={[0, 1.05, -0.18]}><boxGeometry args={[0.14, 1.7, 0.14]} /><meshStandardMaterial color={STEEL} metalness={0.3} roughness={0.4} /></mesh>
+-      {/* arm assembly on mast */}
+       <group ref={shoulder} position={[0, 1.55, -0.12]}>
+         <mesh position={[0, 0, 0.28]}><boxGeometry args={[0.1, 0.1, 0.6]} /><meshStandardMaterial color={DARK} /></mesh>
+         <group ref={forearm} position={[0, 0, 0.56]}>
+           <mesh position={[0, 0, 0.22]}><boxGeometry args={[0.08, 0.08, 0.46]} /><meshStandardMaterial color={DARK} /></mesh>
+-          {/* end effector: sanding disc + spray nozzle */}
+           <group position={[0, 0, 0.46]}>
+             <mesh ref={disc} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.12, 0.12, 0.03, 24]} /><meshStandardMaterial color={accent} roughness={0.6} /></mesh>
+             <mesh position={[0.14, 0, 0]}><boxGeometry args={[0.05, 0.05, 0.12]} /><meshStandardMaterial color={STEEL} /></mesh>
+@@ -74,36 +81,32 @@ function Finisher({ running, accent }: { running: boolean; accent: string }) {
+ }
+ 
+ /* ============================ 2. HANGER ============================ */
+-function Hanger({ running, accent }: { running: boolean; accent: string }) {
++function Hanger({ running, accent, progressRef, idleRate = 0.28 }: RobotProps) {
+   const arm = useRef<THREE.Group>(null);
+   const sheet = useRef<THREE.Group>(null);
+   const driver = useRef<THREE.Mesh>(null);
++  const getU = useU(progressRef, idleRate);
+   useFrame((s) => {
+-    const t = running ? (s.clock.getElapsedTime() * 0.28) % 1 : 0;
+-    // 0-0.35 raise flat->vertical, 0.35-0.55 push to wall, 0.55-0.85 fasten, 0.85-1 reset
++    const u = getU(s.clock.getElapsedTime());
+     let pitch = -Math.PI / 2, push = 0, spin = 0;
+-    if (t < 0.35) pitch = lerp(-Math.PI / 2, 0, clamp01(t / 0.35));
+-    else if (t < 0.55) { pitch = 0; push = lerp(0, 0.18, clamp01((t - 0.35) / 0.2)); }
+-    else if (t < 0.85) { pitch = 0; push = 0.18; spin = 1; }
+-    else { pitch = lerp(0, -Math.PI / 2, clamp01((t - 0.85) / 0.15)); }
++    if (u < 0.2) pitch = -Math.PI / 2;
++    else if (u < 0.4) pitch = lerp(-Math.PI / 2, 0, clamp01((u - 0.2) / 0.2));
++    else if (u < 0.6) { pitch = 0; push = lerp(0, 0.18, clamp01((u - 0.4) / 0.2)); }
++    else { pitch = 0; push = 0.18; spin = 1; }
+     if (arm.current) arm.current.rotation.x = pitch;
+     if (sheet.current) sheet.current.position.z = 0.5 + push;
+-    if (driver.current && spin) driver.current.rotation.z -= 0.8;
++    if (driver.current && spin && running) driver.current.rotation.z -= 0.8;
+   });
+   return (
+     <group>
+-      <Base color={accent} w={0.8} d={0.62} />
+-      <Wheels running={running} w={0.72} d={0.5} />
++      <Base color={accent} w={0.8} d={0.62} /><Wheels running={running} w={0.72} d={0.5} />
+       <mesh position={[0, 0.7, -0.2]}><boxGeometry args={[0.18, 0.9, 0.18]} /><meshStandardMaterial color={STEEL} metalness={0.3} /></mesh>
+       <group ref={arm} position={[0, 1.05, -0.12]}>
+-        {/* holds sheet */}
+         <group ref={sheet} position={[0, 0, 0.5]}>
+           <mesh castShadow><boxGeometry args={[1.15, 0.02, 0.78]} /><meshStandardMaterial color={GYPSUM} roughness={0.95} /></mesh>
+-          {/* vacuum grippers */}
+           {[[-0.35, 0.2], [0.35, 0.2], [-0.35, -0.2], [0.35, -0.2]].map(([x, z], i) => (
+             <mesh key={i} position={[x, -0.06, z]}><cylinderGeometry args={[0.06, 0.06, 0.1, 12]} /><meshStandardMaterial color={DARK} /></mesh>
+           ))}
+-          {/* fastener driver */}
+           <mesh ref={driver} position={[0.5, 0.08, 0.3]}><cylinderGeometry args={[0.03, 0.03, 0.14, 10]} /><meshStandardMaterial color={accent} /></mesh>
+         </group>
+       </group>
+@@ -111,33 +114,28 @@ function Hanger({ running, accent }: { running: boolean; accent: string }) {
+   );
+ }
+ 
+-/* ============================ 3. CUTTER (gantry) ============================ */
+-function Cutter({ running, accent }: { running: boolean; accent: string }) {
++/* ============================ 3. CUTTER ============================ */
++function Cutter({ running, accent, progressRef, idleRate = 0.3 }: RobotProps) {
+   const carriage = useRef<THREE.Group>(null);
+   const head = useRef<THREE.Mesh>(null);
+   const cut = useRef<THREE.Mesh>(null);
++  const getU = useU(progressRef, idleRate);
+   useFrame((s) => {
+-    const t = running ? (s.clock.getElapsedTime() * 0.3) % 1 : 0;
+-    if (carriage.current) carriage.current.position.x = lerp(-0.55, 0.55, t);
++    const u = getU(s.clock.getElapsedTime());
++    if (carriage.current) carriage.current.position.x = lerp(-0.55, 0.55, u);
+     if (head.current && running) head.current.rotation.y += 0.4;
+-    if (cut.current) { cut.current.scale.x = Math.max(0.001, t); cut.current.position.x = lerp(-0.55, 0, t); }
++    if (cut.current) { cut.current.scale.x = Math.max(0.001, u); cut.current.position.x = lerp(-0.55, 0, u); }
+   });
+   return (
+     <group>
+-      {/* table + sheet */}
+       <mesh position={[0, 0.35, 0]}><boxGeometry args={[1.5, 0.08, 1.0]} /><meshStandardMaterial color={DARK} roughness={0.8} /></mesh>
+       <mesh position={[0, 0.4, 0]}><boxGeometry args={[1.35, 0.02, 0.85]} /><meshStandardMaterial color={GYPSUM} roughness={0.95} /></mesh>
+-      {/* cut line */}
+       <mesh ref={cut} position={[0, 0.42, 0]}><boxGeometry args={[1.1, 0.008, 0.015]} /><meshStandardMaterial color="#334155" /></mesh>
+-      {/* gantry legs + rail */}
+-      {[[-0.7, 0.5], [0.7, 0.5], [-0.7, -0.5], [0.7, -0.5]].map(([x, z], i) => (
+-        <mesh key={i} position={[x, 0.7, z]}><boxGeometry args={[0.06, 0.7, 0.06]} /><meshStandardMaterial color={STEEL} /></mesh>
+-      ))}
++      {[[-0.7, 0.5], [0.7, 0.5], [-0.7, -0.5], [0.7, -0.5]].map(([x, z], i) => (<mesh key={i} position={[x, 0.7, z]}><boxGeometry args={[0.06, 0.7, 0.06]} /><meshStandardMaterial color={STEEL} /></mesh>))}
+       <mesh position={[0, 1.03, 0.5]}><boxGeometry args={[1.5, 0.06, 0.06]} /><meshStandardMaterial color={STEEL} /></mesh>
+       <mesh position={[0, 1.03, -0.5]}><boxGeometry args={[1.5, 0.06, 0.06]} /><meshStandardMaterial color={STEEL} /></mesh>
+-      {/* carriage travels X, holds a cutting head that reaches down */}
+       <group ref={carriage} position={[0, 1.03, 0]}>
+-        <mesh position={[0, 0, 0]}><boxGeometry args={[0.12, 0.1, 1.0]} /><meshStandardMaterial color={accent} /></mesh>
++        <mesh><boxGeometry args={[0.12, 0.1, 1.0]} /><meshStandardMaterial color={accent} /></mesh>
+         <mesh position={[0, -0.32, 0]}><boxGeometry args={[0.08, 0.55, 0.08]} /><meshStandardMaterial color={DARK} /></mesh>
+         <mesh ref={head} position={[0, -0.6, 0]}><cylinderGeometry args={[0.07, 0.05, 0.12, 16]} /><meshStandardMaterial color={accent} metalness={0.4} /></mesh>
+       </group>
+@@ -145,69 +143,69 @@ function Cutter({ running, accent }: { running: boolean; accent: string }) {
+   );
+ }
+ 
+-/* ============================ 4. AMR + lift ============================ */
+-function Amr({ running, accent }: { running: boolean; accent: string }) {
++/* ============================ 4. AMR ============================ */
++function Amr({ running, accent, progressRef, idleRate = 0.18 }: RobotProps) {
+   const body = useRef<THREE.Group>(null);
+   const lift = useRef<THREE.Group>(null);
++  const getU = useU(progressRef, idleRate);
+   useFrame((s) => {
+-    const t = s.clock.getElapsedTime();
+-    if (body.current && running) body.current.position.x = Math.sin(t * 0.5) * 0.5;
+-    if (lift.current) lift.current.position.y = 0.5 + (running ? (Math.sin(t * 1.2) * 0.5 + 0.5) * 0.25 : 0);
++    const u = getU(s.clock.getElapsedTime());
++    // round trip: out 0-0.55, place 0.55-0.72, return 0.72-1
++    let x = 0, ly = 0;
++    if (progressRef) {
++      if (u < 0.55) x = lerp(-1.4, 1.4, u / 0.55);
++      else if (u < 0.72) { x = 1.4; ly = -lerp(0, 0.25, (u - 0.55) / 0.17); }
++      else x = lerp(1.4, -1.4, (u - 0.72) / 0.28);
++    } else { x = Math.sin(s.clock.getElapsedTime() * 0.5) * 0.5; ly = (Math.sin(s.clock.getElapsedTime() * 1.2) * 0.5 + 0.5) * 0.15; }
++    if (body.current) body.current.position.x = x;
++    if (lift.current) lift.current.position.y = 0.5 + ly;
+   });
+   return (
+     <group ref={body}>
+-      <Base color={accent} w={0.9} h={0.2} d={0.7} />
+-      <Wheels running={running} w={0.82} d={0.6} />
+-      {/* mast */}
+-      {[-0.34, 0.34].map((x) => (
+-        <mesh key={x} position={[x, 0.75, -0.28]}><boxGeometry args={[0.06, 1.0, 0.06]} /><meshStandardMaterial color={STEEL} /></mesh>
+-      ))}
+-      {/* fork lift carrying a stack of sheets */}
++      <Base color={accent} w={0.9} h={0.2} d={0.7} /><Wheels running={running} w={0.82} d={0.6} />
++      {[-0.34, 0.34].map((x) => (<mesh key={x} position={[x, 0.75, -0.28]}><boxGeometry args={[0.06, 1.0, 0.06]} /><meshStandardMaterial color={STEEL} /></mesh>))}
+       <group ref={lift} position={[0, 0.5, 0.05]}>
+         <mesh position={[0, -0.03, 0.2]}><boxGeometry args={[0.8, 0.04, 0.5]} /><meshStandardMaterial color={DARK} /></mesh>
+-        {[0, 1, 2, 3].map((i) => (
+-          <mesh key={i} castShadow position={[0, 0.03 + i * 0.05, 0.2]}><boxGeometry args={[0.75, 0.04, 0.46]} /><meshStandardMaterial color={GYPSUM} roughness={0.95} /></mesh>
+-        ))}
++        {[0, 1, 2, 3].map((i) => (<mesh key={i} castShadow position={[0, 0.03 + i * 0.05, 0.2]}><boxGeometry args={[0.75, 0.04, 0.46]} /><meshStandardMaterial color={GYPSUM} roughness={0.95} /></mesh>))}
+       </group>
+     </group>
+   );
+ }
+ 
+-/* ============================ 5. QA scanner ============================ */
+-function Qa({ running, accent }: { running: boolean; accent: string }) {
+-  const barY = useRef<THREE.Group>(null);
++/* ============================ 5. QA ============================ */
++function Qa({ running, accent, progressRef, idleRate = 0.2 }: RobotProps) {
++  const barGroup = useRef<THREE.Group>(null);
+   const bar = useRef<THREE.MeshStandardMaterial>(null);
+   const cam = useRef<THREE.Group>(null);
++  const getU = useU(progressRef, idleRate);
+   useFrame((s) => {
+-    const t = s.clock.getElapsedTime();
+-    if (barY.current) barY.current.position.y = 1.0 + (running ? Math.sin(t * 1.4) * 0.55 : 0);
+-    if (bar.current) bar.current.emissiveIntensity = running ? 0.6 + Math.sin(t * 6) * 0.3 : 0.05;
+-    if (cam.current) cam.current.rotation.y = running ? Math.sin(t * 0.8) * 0.25 : 0;
++    const u = getU(s.clock.getElapsedTime());
++    if (barGroup.current) barGroup.current.position.x = progressRef ? lerp(-1.1, 1.1, u) : Math.sin(s.clock.getElapsedTime()) * 0.9;
++    if (bar.current) bar.current.emissiveIntensity = running ? 0.6 + Math.sin(s.clock.getElapsedTime() * 6) * 0.3 : 0.1;
++    if (cam.current) cam.current.rotation.y = running ? Math.sin(s.clock.getElapsedTime() * 0.8) * 0.25 : 0;
+   });
+   return (
+     <group>
+-      <Base color={STEEL} />
+-      <Wheels running={running} />
++      <Base color={STEEL} /><Wheels running={running} />
+       <mesh position={[0, 0.9, -0.15]}><boxGeometry args={[0.1, 1.4, 0.1]} /><meshStandardMaterial color={DARK} /></mesh>
+-      {/* camera head */}
+       <group ref={cam} position={[0, 1.6, -0.1]}>
+         <mesh><boxGeometry args={[0.24, 0.14, 0.16]} /><meshStandardMaterial color={accent} /></mesh>
+         <mesh position={[0, 0, 0.1]}><sphereGeometry args={[0.05, 16, 16]} /><meshStandardMaterial color="#0b1220" metalness={0.6} roughness={0.2} /></mesh>
+       </group>
+-      {/* raking-light bar reaching toward wall, sweeps vertically */}
+-      <group ref={barY} position={[0, 1.0, 0.35]}>
+-        <mesh><boxGeometry args={[0.9, 0.05, 0.05]} /><meshStandardMaterial ref={bar} color={accent} emissive={accent} emissiveIntensity={0.4} /></mesh>
++      <group ref={barGroup} position={[0, 1.0, 0.35]}>
++        <mesh><boxGeometry args={[0.06, 1.6, 0.05]} /><meshStandardMaterial ref={bar} color={accent} emissive={accent} emissiveIntensity={0.4} /></mesh>
+       </group>
+     </group>
+   );
+ }
+ 
+-export default function RobotModel({ id, running, accent }: { id: RobotId; running: boolean; accent: string }) {
++export default function RobotModel({ id, running, accent, progressRef, task }: RobotProps & { id: RobotId }) {
++  const p = { running, accent, progressRef, task };
+   switch (id) {
+-    case "finisher": return <Finisher running={running} accent={accent} />;
+-    case "hanger": return <Hanger running={running} accent={accent} />;
+-    case "cutter": return <Cutter running={running} accent={accent} />;
+-    case "amr": return <Amr running={running} accent={accent} />;
+-    case "qa": return <Qa running={running} accent={accent} />;
++    case "finisher": return <Finisher {...p} />;
++    case "hanger": return <Hanger {...p} />;
++    case "cutter": return <Cutter {...p} />;
++    case "amr": return <Amr {...p} />;
++    case "qa": return <Qa {...p} />;
+   }
+ }
+diff --git a/app/robots-demo/RobotShowcase.tsx b/app/robots-demo/RobotShowcase.tsx
+index 02e1c05..84fad99 100644
+--- a/app/robots-demo/RobotShowcase.tsx
++++ b/app/robots-demo/RobotShowcase.tsx
+@@ -1,14 +1,20 @@
+ "use client";
+ 
+-import { useMemo, useRef, useState, useSyncExternalStore } from "react";
++import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+ import { Canvas } from "@react-three/fiber";
+ import { OrbitControls, ContactShadows } from "@react-three/drei";
+ import { motion, AnimatePresence } from "framer-motion";
+ import {
+-  ArrowRight, Cpu, ShieldCheck, Activity, Wrench, Boxes, Info, Play, Pause, Loader2, CheckCircle2,
++  ArrowRight, Cpu, ShieldCheck, Activity, Wrench, Boxes, Info, Play, Pause, RotateCcw,
++  CheckCircle2, Sparkles, SlidersHorizontal,
+ } from "lucide-react";
+ import RobotModel from "../components/robots3d/DrywallRobots";
+-import { Lights, Floor, WallSection } from "../components/robots3d/Env";
++import { Lights, Floor } from "../components/robots3d/Env";
++import { FinishWall, HangWall, CutOpening, DeliveryZone, QAWall } from "./scene/Workpieces";
++import {
++  JOBS, defaultKnobs, jobDuration, phaseAt, outcome,
++  type JobDef, type KnobValues,
++} from "./jobs";
+ import {
+   ROBOTS, MARKET_FACTS, computePlan, money, num,
+   type RobotId, type JobConfig, DEFAULT_JOB,
+@@ -19,44 +25,88 @@ const READINESS_STYLE: Record<string, string> = {
+   near: "bg-sky-100 text-sky-800 border-sky-200",
+   roadmap: "bg-slate-100 text-slate-600 border-slate-200",
+ };
++const SPEEDS = [1, 2, 4] as const;
++
++function Workpiece({ id, jobId, progress }: { id: RobotId; jobId: string; progress: number }) {
++  if (id === "finisher") return <FinishWall progress={progress} task={jobId} />;
++  if (id === "hanger") return <HangWall progress={progress} task={jobId} />;
++  if (id === "cutter") return <CutOpening progress={progress} />;
++  if (id === "amr") return <DeliveryZone progress={progress} />;
++  return <QAWall progress={progress} />;
++}
+ 
+-function RobotStage({ id, accent, running }: { id: RobotId; accent: string; running: boolean }) {
++function Stage({ id, accent, running, progressRef, task, progress }: {
++  id: RobotId; accent: string; running: boolean; progressRef: React.MutableRefObject<number>; task: string; progress: number;
++}) {
+   const mounted = useSyncExternalStore(() => () => {}, () => true, () => false);
+   if (!mounted) return <div className="grid h-full place-items-center text-sm text-slate-500">Loading 3D…</div>;
+-  const showWall = id === "finisher" || id === "hanger" || id === "qa";
+   return (
+-    <Canvas shadows camera={{ position: [3.2, 2.4, 3.6], fov: 42 }} dpr={[1, 1.75]}>
++    <Canvas shadows camera={{ position: [3.6, 2.7, 4.2], fov: 42 }} dpr={[1, 1.75]}>
+       <color attach="background" args={["#0b1220"]} />
+       <Lights accent={accent} />
+-      <Floor />
+-      {showWall && <WallSection finished={id === "finisher" ? 0.6 : id === "qa" ? 1 : 0.15} />}
+-      <group position={[0, 0, id === "cutter" || id === "amr" ? 0 : -0.4]}>
+-        <RobotModel id={id} running={running} accent={accent} />
+-      </group>
+-      <ContactShadows position={[0, 0.01, 0]} opacity={0.5} scale={10} blur={2.4} far={5} />
+-      <OrbitControls enableDamping minDistance={2.2} maxDistance={9} maxPolarAngle={Math.PI / 2.05} target={[0, 1, 0]} />
++      <Floor size={14} />
++      <Workpiece id={id} jobId={task} progress={progress} />
++      <RobotModel id={id} running={running} accent={accent} progressRef={progressRef} task={task} />
++      <ContactShadows position={[0, 0.01, 0]} opacity={0.5} scale={12} blur={2.4} far={5} />
++      <OrbitControls enableDamping minDistance={2.6} maxDistance={10} maxPolarAngle={Math.PI / 2.05} target={[0, 1.1, 0.6]} />
+     </Canvas>
+   );
+ }
+ 
+-export default function RobotShowcase() {
++export default function RobotWorkstation() {
+   const [activeId, setActiveId] = useState<RobotId>("finisher");
+   const active = ROBOTS.find((r) => r.id === activeId)!;
+-  const [running, setRunning] = useState(true);
++  const jobs = JOBS[activeId];
+ 
+-  const [cfg, setCfg] = useState<JobConfig>({ ...DEFAULT_JOB });
+-  const [simState, setSimState] = useState<"idle" | "running" | "done">("idle");
+-  const timer = useRef<number | null>(null);
+-  const plan = useMemo(() => computePlan(cfg), [cfg]);
++  const [jobId, setJobId] = useState<string>(jobs[0].id);
++  const job: JobDef = jobs.find((j) => j.id === jobId) ?? jobs[0];
++  const [knobs, setKnobs] = useState<KnobValues>(() => defaultKnobs(jobs[0]));
++
++  const [running, setRunning] = useState(false);
++  const [done, setDone] = useState(false);
++  const [speed, setSpeed] = useState<number>(SPEEDS[0]);
++
++  const progressRef = useRef(0);
++  const [hud, setHud] = useState<{ p: number }>({ p: 0 });
++
++  const durSec = useMemo(() => jobDuration(job, knobs), [job, knobs]);
++  const runningRef = useRef(running);
++  const speedRef = useRef(speed);
++  const durRef = useRef(durSec);
++  useEffect(() => { runningRef.current = running; }, [running]);
++  useEffect(() => { speedRef.current = speed; }, [speed]);
++  useEffect(() => { durRef.current = durSec; }, [durSec]);
++
++  const resetRun = useCallback(() => { progressRef.current = 0; setHud({ p: 0 }); setRunning(false); setDone(false); }, []);
++
++  useEffect(() => {
++    let raf = 0; let last = performance.now(); let hudLast = 0;
++    const loop = (t: number) => {
++      const dt = Math.min((t - last) / 1000, 0.05); last = t;
++      if (runningRef.current) {
++        progressRef.current += (dt * speedRef.current) / durRef.current;
++        if (progressRef.current >= 1) { progressRef.current = 1; setRunning(false); setDone(true); }
++      }
++      if (t - hudLast > 45) { hudLast = t; setHud({ p: progressRef.current }); }
++      raf = requestAnimationFrame(loop);
++    };
++    raf = requestAnimationFrame(loop);
++    return () => cancelAnimationFrame(raf);
++  }, []);
++
++  const selectRobot = (id: RobotId) => { setActiveId(id); const j = JOBS[id][0]; setJobId(j.id); setKnobs(defaultKnobs(j)); resetRun(); };
++  const selectJob = (jid: string) => { const j = jobs.find((x) => x.id === jid)!; setJobId(jid); setKnobs(defaultKnobs(j)); resetRun(); };
++  const setKnob = (kid: string, v: number | string | boolean) => { setKnobs((k) => ({ ...k, [kid]: v })); resetRun(); };
++  const runJob = () => { if (done) { progressRef.current = 0; setDone(false); } setRunning(true); };
++
++  const phase = phaseAt(job, hud.p);
++  const result = outcome(activeId, job, knobs, hud.p);
+ 
+-  const runSim = () => {
+-    if (timer.current) window.clearTimeout(timer.current);
+-    setSimState("running");
+-    timer.current = window.setTimeout(() => setSimState("done"), 1400);
+-  };
+-  const set = (patch: Partial<JobConfig>) => { setCfg((c) => ({ ...c, ...patch })); if (simState === "done") setSimState("idle"); };
++  // fleet console (kept)
++  const [cfg] = useState<JobConfig>({ ...DEFAULT_JOB });
++  const plan = useMemo(() => computePlan(cfg), [cfg]);
+ 
+-  const mailtoPilot = `mailto:pilot@dryforge.ai?subject=${encodeURIComponent(`Founding pilot interest — ${active.name}`)}&body=${encodeURIComponent(`I'm interested in the ${active.name} for a GTA project. Let's talk.`)}`;
++  const mailtoPilot = `mailto:pilot@dryforge.ai?subject=${encodeURIComponent(`Founding pilot — ${active.name}`)}&body=${encodeURIComponent(`I ran the ${job.label} demo on the ${active.name}. Let's talk about a GTA job.`)}`;
+ 
+   return (
+     <section className="mx-auto max-w-7xl px-4 sm:px-6 py-10">
+@@ -70,9 +120,10 @@ export default function RobotShowcase() {
+         ))}
+       </div>
+ 
++      {/* selector */}
+       <div className="mt-10 flex gap-2 overflow-x-auto pb-1">
+         {ROBOTS.map((r) => (
+-          <button key={r.id} onClick={() => setActiveId(r.id)}
++          <button key={r.id} onClick={() => selectRobot(r.id)}
+             className={`flex-shrink-0 rounded-lg border px-4 py-2.5 text-left transition-colors ${activeId === r.id ? "border-transparent text-white" : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"}`}
+             style={activeId === r.id ? { backgroundColor: r.accent } : undefined}>
+             <div className="text-[11px] font-semibold uppercase tracking-wide opacity-80">{r.order}. {r.phase}</div>
+@@ -81,103 +132,164 @@ export default function RobotShowcase() {
+         ))}
+       </div>
+ 
+-      <AnimatePresence mode="wait">
+-        <motion.div key={active.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}
+-          className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-[1.3fr_1fr]">
+-          <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-[#0b1220] aspect-[4/3] lg:aspect-auto lg:h-[520px]"
+-            role="img" aria-label={`3D animation of the ${active.name}. ${active.howItWorks}`}>
+-            <RobotStage id={active.id} accent={active.accent} running={running} />
+-            <div className="pointer-events-none absolute right-3 top-3 rounded-md px-3 py-1.5 text-xs font-semibold text-white" style={{ backgroundColor: active.accent }}>{active.phase}</div>
+-            <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-gradient-to-t from-black/70 to-transparent px-4 py-3">
+-              <button onClick={() => setRunning((r) => !r)} className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90" style={{ backgroundColor: active.accent }} aria-label={running ? "Pause" : "Play"}>
+-                {running ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />} {running ? "Pause" : "Play"}
+-              </button>
+-              <span className="text-[11px] text-slate-300">Drag to orbit</span>
++      <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-[1.35fr_1fr]">
++        {/* ---- 3D workstation ---- */}
++        <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-[#0b1220] aspect-[4/3] lg:aspect-auto lg:h-[560px]"
++          role="img" aria-label={`3D workstation: ${active.name} running ${job.label}`}>
++          <Stage id={activeId} accent={active.accent} running={running} progressRef={progressRef} task={jobId} progress={hud.p} />
++
++          {/* task HUD */}
++          <div className="pointer-events-none absolute left-3 top-3 max-w-[62%] rounded-lg bg-black/55 px-3 py-2 backdrop-blur-sm">
++            <div className="text-[10px] uppercase tracking-wide text-slate-400">{done ? "Complete" : running ? "Running" : "Ready"} · {job.label}</div>
++            <div className="mt-0.5 text-sm font-semibold text-white">{phase.label}</div>
++            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-white/15">
++              <div className="h-full rounded-full transition-[width] duration-100" style={{ width: `${hud.p * 100}%`, backgroundColor: active.accent }} />
+             </div>
+           </div>
+ 
+-          <div className="space-y-4">
+-            <div className="rounded-2xl border border-slate-200 bg-white p-5">
+-              <div className="flex flex-wrap items-center gap-2">
+-                <span className="grid h-8 w-8 place-items-center rounded-lg text-white" style={{ backgroundColor: active.accent }}><Boxes className="h-4 w-4" /></span>
+-                <h2 className="text-xl font-bold tracking-tight text-slate-900">{active.name}</h2>
+-              </div>
+-              <span className={`mt-2 inline-block rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${READINESS_STYLE[active.readiness]}`}>{active.readinessLabel}</span>
+-              <div className="mt-4 space-y-3">
+-                <Block icon={<Activity className="h-4 w-4" />} title="The pain it removes" body={active.painPoint} />
+-                <Block icon={<Wrench className="h-4 w-4" />} title="How it works" body={active.howItWorks} />
+-                <Block icon={<Cpu className="h-4 w-4" />} title="DryForge software layer" body={active.dryforgeLayer} accent={active.accent} />
++          {/* live metrics */}
++          <div className="pointer-events-none absolute right-3 top-3 grid grid-cols-2 gap-1.5">
++            {result.metrics.map((m) => (
++              <div key={m.label} className="rounded-md bg-black/50 px-2.5 py-1.5 backdrop-blur-sm">
++                <div className="text-[9px] uppercase tracking-wide text-slate-400">{m.label}</div>
++                <div className={`font-mono text-xs font-bold ${m.tone === "good" ? "text-emerald-400" : m.tone === "warn" ? "text-amber-400" : "text-white"}`}>{m.value}</div>
+               </div>
+-              {active.benchmarkNote && (
+-                <p className="mt-3 flex gap-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600"><Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-400" />{active.benchmarkNote}</p>
+-              )}
++            ))}
++          </div>
++
++          {/* transport controls */}
++          <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-gradient-to-t from-black/75 to-transparent px-4 py-3">
++            <div className="flex items-center gap-2">
++              <button onClick={running ? () => setRunning(false) : runJob}
++                className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90" style={{ backgroundColor: active.accent }}>
++                {running ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />} {running ? "Pause" : done ? "Run again" : "Run job"}
++              </button>
++              <button onClick={resetRun} className="inline-flex items-center gap-2 rounded-md border border-white/20 bg-white/5 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-white/10"><RotateCcw className="h-4 w-4" /> Reset</button>
+             </div>
+-            <div className="rounded-2xl border border-slate-200 bg-white p-5">
+-              <dl className="space-y-2">
+-                {active.specs.map((s) => (
+-                  <div key={s.label} className="flex justify-between border-b border-slate-100 pb-2 text-sm last:border-0"><dt className="text-slate-500">{s.label}</dt><dd className="font-mono font-semibold text-slate-900">{s.value}</dd></div>
+-                ))}
+-              </dl>
+-              <div className="mt-3 rounded-lg p-3 text-white" style={{ backgroundColor: active.accent }}>
+-                <div className="text-[11px] font-semibold uppercase tracking-wide opacity-80">Modelled labour reduction (design target)</div>
+-                <div className="text-2xl font-bold">{active.laborReductionPct}%</div>
+-              </div>
++            <div className="flex items-center gap-1 rounded-md bg-black/50 p-1">
++              {SPEEDS.map((sp) => (<button key={sp} onClick={() => setSpeed(sp)} className={`rounded px-2.5 py-1 text-xs font-semibold ${speed === sp ? "text-white" : "text-slate-300 hover:text-white"}`} style={speed === sp ? { backgroundColor: active.accent } : undefined}>{sp}×</button>))}
++            </div>
++          </div>
++        </div>
++
++        {/* ---- control panel ---- */}
++        <div className="space-y-4">
++          {/* job buttons */}
++          <div className="rounded-2xl border border-slate-200 bg-white p-5">
++            <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-[#F97316]" /><h3 className="text-sm font-semibold text-slate-900">Pick a job to run</h3></div>
++            <div className="mt-3 grid grid-cols-1 gap-2">
++              {jobs.map((j) => (
++                <button key={j.id} onClick={() => selectJob(j.id)}
++                  className={`flex items-center justify-between rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-colors ${jobId === j.id ? "border-transparent text-white" : "border-slate-200 text-slate-700 hover:border-slate-300"}`}
++                  style={jobId === j.id ? { backgroundColor: active.accent } : undefined}>
++                  {j.label}
++                  {jobId === j.id && <CheckCircle2 className="h-4 w-4" />}
++                </button>
++              ))}
++            </div>
++          </div>
++
++          {/* knobs */}
++          <div className="rounded-2xl border border-slate-200 bg-white p-5">
++            <div className="flex items-center gap-2"><SlidersHorizontal className="h-4 w-4 text-[#F97316]" /><h3 className="text-sm font-semibold text-slate-900">Tune the machine</h3></div>
++            <div className="mt-4 space-y-4">
++              {job.knobs.map((k) => {
++                if (k.kind === "slider") {
++                  const v = Number(knobs[k.id]);
++                  return (
++                    <div key={k.id}>
++                      <div className="mb-1 flex items-center justify-between"><label className="text-xs font-medium text-slate-500">{k.label}</label><span className="font-mono text-xs font-semibold text-slate-900">{v}{k.unit}</span></div>
++                      <input type="range" min={k.min} max={k.max} step={k.step} value={v} onChange={(e) => setKnob(k.id, parseFloat(e.target.value))} className="w-full accent-[#F97316]" aria-label={k.label} />
++                    </div>
++                  );
++                }
++                if (k.kind === "segment") {
++                  return (
++                    <div key={k.id}>
++                      <label className="mb-1 block text-xs font-medium text-slate-500">{k.label}</label>
++                      <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${k.options!.length}, minmax(0,1fr))` }}>
++                        {k.options!.map((opt) => (
++                          <button key={opt} onClick={() => setKnob(k.id, opt)} className={`rounded-md border py-1.5 text-xs font-semibold transition-colors ${String(knobs[k.id]) === opt ? "border-[#F97316] bg-orange-50 text-[#EA580C]" : "border-slate-200 text-slate-600 hover:border-slate-300"}`}>{opt}</button>
++                        ))}
++                      </div>
++                    </div>
++                  );
++                }
++                return (
++                  <label key={k.id} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2.5 text-sm">
++                    <span className="font-medium text-slate-700">{k.label}</span>
++                    <input type="checkbox" checked={knobs[k.id] !== false} onChange={(e) => setKnob(k.id, e.target.checked)} className="h-4 w-4 accent-[#F97316]" />
++                  </label>
++                );
++              })}
++            </div>
++            <p className="mt-3 text-[11px] italic text-slate-400">Nominal run time {num(durSec, 0)}s at 1× · outcomes are modelled projections.</p>
++          </div>
++
++          {/* result / value */}
++          <AnimatePresence>
++            {done && (
++              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-5">
++                <div className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600" /><h3 className="text-sm font-bold text-slate-900">Job complete — {result.quality.toFixed(1)}% quality</h3></div>
++                <p className="mt-2 text-sm text-slate-700">{result.valueLine}</p>
++                <a href={mailtoPilot} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90" style={{ backgroundColor: active.accent }}>Run this on my job site <ArrowRight className="h-4 w-4" /></a>
++              </motion.div>
++            )}
++          </AnimatePresence>
++        </div>
++      </div>
++
++      {/* robot detail */}
++      <AnimatePresence mode="wait">
++        <motion.div key={active.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1.3fr_1fr]">
++          <div className="rounded-2xl border border-slate-200 bg-white p-6">
++            <div className="flex flex-wrap items-center gap-2">
++              <span className="grid h-8 w-8 place-items-center rounded-lg text-white" style={{ backgroundColor: active.accent }}><Boxes className="h-4 w-4" /></span>
++              <h2 className="text-xl font-bold tracking-tight text-slate-900">{active.name}</h2>
++              <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${READINESS_STYLE[active.readiness]}`}>{active.readinessLabel}</span>
++            </div>
++            <div className="mt-4 space-y-3">
++              <Block icon={<Activity className="h-4 w-4" />} title="The pain it removes" body={active.painPoint} />
++              <Block icon={<Wrench className="h-4 w-4" />} title="How it works" body={active.howItWorks} />
++              <Block icon={<Cpu className="h-4 w-4" />} title="DryForge software layer" body={active.dryforgeLayer} accent={active.accent} />
++            </div>
++            {active.benchmarkNote && <p className="mt-3 flex gap-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600"><Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-400" />{active.benchmarkNote}</p>}
++          </div>
++          <div className="rounded-2xl border border-slate-200 bg-white p-5">
++            <dl className="space-y-2">
++              {active.specs.map((s) => (<div key={s.label} className="flex justify-between border-b border-slate-100 pb-2 text-sm last:border-0"><dt className="text-slate-500">{s.label}</dt><dd className="font-mono font-semibold text-slate-900">{s.value}</dd></div>))}
++            </dl>
++            <div className="mt-3 rounded-lg p-3 text-white" style={{ backgroundColor: active.accent }}>
++              <div className="text-[11px] font-semibold uppercase tracking-wide opacity-80">Modelled labour reduction (design target)</div>
++              <div className="text-2xl font-bold">{active.laborReductionPct}%</div>
+             </div>
+-            <a href={mailtoPilot} className="flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90" style={{ backgroundColor: active.accent }}>Apply to pilot this robot <ArrowRight className="h-4 w-4" /></a>
+           </div>
+         </motion.div>
+       </AnimatePresence>
+ 
++      {/* fleet console */}
+       <div className="mt-12 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-6">
+-        <div className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-[#F97316]" /><h3 className="text-lg font-bold text-slate-900">Fleet console</h3><span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Planning model</span></div>
+-        <p className="mt-1 text-sm text-slate-600">Set the deployment and see the modelled economics update live.</p>
+-        <div className="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1fr]">
+-          <div className="space-y-4">
+-            <Slider label="Job size" value={cfg.sqft} min={2000} max={120000} step={1000} display={`${num(cfg.sqft)} sqft`} onChange={(v) => set({ sqft: v })} />
+-            <Slider label="Supervision (robots per operator)" value={cfg.supervisionRatio} min={1} max={6} step={1} display={`${cfg.supervisionRatio}:1`} onChange={(v) => set({ supervisionRatio: v })} />
+-            <Slider label="RaaS rate ($/sqft)" value={cfg.raasRate} min={0.6} max={2.5} step={0.05} display={money(cfg.raasRate)} onChange={(v) => set({ raasRate: v })} />
+-            <Slider label="Loaded labour rate" value={cfg.laborRate} min={30} max={95} step={1} display={`${money(cfg.laborRate)}/hr`} onChange={(v) => set({ laborRate: v })} />
+-            <button onClick={runSim} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#0F172A] px-4 py-3 text-sm font-semibold text-white hover:bg-[#1E293B]">
+-              {simState === "running" ? <Loader2 className="h-4 w-4 animate-spin" /> : simState === "done" ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <Play className="h-4 w-4" />}
+-              {simState === "running" ? "Simulating…" : simState === "done" ? "Deployment simulated" : "Simulate deployment"}
+-            </button>
+-          </div>
+-          <motion.div animate={{ opacity: simState === "running" ? 0.5 : 1 }} className="grid grid-cols-2 gap-3 self-start">
+-            <Metric label="Labour hours saved" value={num(plan.laborHoursSaved)} tone="good" />
+-            <Metric label="Schedule" value={`${num(plan.robotDays, 1)}d`} sub={`vs ${num(plan.manualDays, 1)}d manual`} />
+-            <Metric label="RaaS cost" value={money(plan.raasCost)} />
+-            <Metric label="Modelled savings" value={money(plan.costSaved)} tone={plan.costSaved > 0 ? "good" : "warn"} />
+-            <Metric label="Operators needed" value={`${plan.operatorsNeeded}`} sub={`at ${cfg.supervisionRatio}:1`} />
+-            <Metric label="Manual labour cost" value={money(plan.manualCost)} />
+-          </motion.div>
++        <div className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-[#F97316]" /><h3 className="text-lg font-bold text-slate-900">Fleet economics</h3><span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Planning model</span></div>
++        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
++          <Mini label="Labour hrs saved" value={num(plan.laborHoursSaved)} />
++          <Mini label="Schedule" value={`${num(plan.robotDays, 1)}d vs ${num(plan.manualDays, 1)}d`} />
++          <Mini label="Modelled savings" value={money(plan.costSaved)} />
++          <Mini label="RaaS cost" value={money(plan.raasCost)} />
+         </div>
++        <a href="/simulator" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-[#EA580C] hover:underline">See all five run a full job in the simulator <ArrowRight className="h-4 w-4" /></a>
+       </div>
+ 
+-      <div className="mt-10 flex flex-col items-center gap-4 rounded-2xl bg-[#0F172A] p-8 text-center text-white sm:flex-row sm:justify-between sm:text-left">
+-        <div><h3 className="text-xl font-bold">See the fleet run a full job in 3D</h3><p className="mt-1 text-sm text-slate-300">Configure a project and watch all five robots work the site end to end.</p></div>
+-        <a href="/simulator" className="inline-flex items-center gap-2 rounded-lg bg-[#F97316] px-6 py-3 text-sm font-semibold hover:bg-[#EA580C]">Open the fleet simulator <ArrowRight className="h-4 w-4" /></a>
++      <div className="mt-8 flex flex-col items-center gap-4 rounded-2xl bg-[#0F172A] p-8 text-center text-white sm:flex-row sm:justify-between sm:text-left">
++        <div><h3 className="text-xl font-bold">Put a robot on your next job</h3><p className="mt-1 text-sm text-slate-300">Founding GTA pilots now. Zero capex — priced per finished square foot.</p></div>
++        <a href="mailto:pilot@dryforge.ai?subject=Founding%20pilot%20interest" className="inline-flex items-center gap-2 rounded-lg bg-[#F97316] px-6 py-3 text-sm font-semibold hover:bg-[#EA580C]">Apply for a pilot <ArrowRight className="h-4 w-4" /></a>
+       </div>
+     </section>
+   );
+ }
+ 
+ function Block({ icon, title, body, accent }: { icon: React.ReactNode; title: string; body: string; accent?: string }) {
+-  return (
+-    <div>
+-      <div className="flex items-center gap-2 text-sm font-semibold" style={accent ? { color: accent } : { color: "#0F172A" }}>{icon} {title}</div>
+-      <p className="mt-1 text-sm leading-relaxed text-slate-600">{body}</p>
+-    </div>
+-  );
+-}
+-function Metric({ label, value, sub, tone = "default" }: { label: string; value: string; sub?: string; tone?: "default" | "good" | "warn" }) {
+-  const color = tone === "good" ? "text-emerald-600" : tone === "warn" ? "text-amber-600" : "text-slate-900";
+-  return (<div className="rounded-xl border border-slate-200 bg-white p-4"><div className="text-[11px] uppercase tracking-wide text-slate-400">{label}</div><div className={`mt-1 font-mono text-lg font-bold ${color}`}>{value}</div>{sub && <div className="text-[11px] text-slate-400">{sub}</div>}</div>);
++  return (<div><div className="flex items-center gap-2 text-sm font-semibold" style={accent ? { color: accent } : { color: "#0F172A" }}>{icon} {title}</div><p className="mt-1 text-sm leading-relaxed text-slate-600">{body}</p></div>);
+ }
+-function Slider({ label, value, min, max, step, display, onChange }: { label: string; value: number; min: number; max: number; step: number; display: string; onChange: (v: number) => void }) {
+-  return (
+-    <div>
+-      <div className="mb-1 flex items-center justify-between"><label className="text-xs font-medium text-slate-500">{label}</label><span className="font-mono text-xs font-semibold text-slate-900">{display}</span></div>
+-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(parseFloat(e.target.value))} className="w-full accent-[#F97316]" aria-label={label} />
+-    </div>
+-  );
++function Mini({ label, value }: { label: string; value: string }) {
++  return (<div className="rounded-xl border border-slate-200 bg-white p-4"><div className="text-[11px] uppercase tracking-wide text-slate-400">{label}</div><div className="mt-1 font-mono text-sm font-bold text-slate-900">{value}</div></div>);
+ }
+diff --git a/app/robots-demo/jobs.ts b/app/robots-demo/jobs.ts
+new file mode 100644
+index 0000000..da921c1
+--- /dev/null
++++ b/app/robots-demo/jobs.ts
+@@ -0,0 +1,288 @@
++/**
++ * jobs.ts — the "operate the robot" engine for /robots-demo.
++ * Each robot exposes concrete JOBS a customer would actually run. Each job has
++ * PHASES (so the robot executes a real sequence) and KNOBS (parameters that
++ * change how the machine behaves and what it delivers). Outcomes are modelled
++ * from the knob values — labelled as projections, per the honesty policy.
++ */
++import type { RobotId } from "../lib/fleet";
++
++export type KnobKind = "slider" | "segment" | "toggle";
++export interface Knob {
++  id: string;
++  label: string;
++  kind: KnobKind;
++  min?: number; max?: number; step?: number; unit?: string;
++  options?: string[];
++  default: number | string | boolean;
++}
++export interface Phase { id: string; label: string; frac: number }
++export interface JobDef {
++  id: string;
++  label: string;
++  target: string; // what workpiece it acts on
++  baseSeconds: number;
++  phases: Phase[];
++  knobs: Knob[];
++}
++export type KnobValues = Record<string, number | string | boolean>;
++export interface Metric { label: string; value: string; tone?: "good" | "warn" | "default" }
++
++/* ------------------------------- job catalog ------------------------------- */
++export const JOBS: Record<RobotId, JobDef[]> = {
++  finisher: [
++    {
++      id: "coat", label: "Tape & mud coat", target: "wall", baseSeconds: 9,
++      phases: [
++        { id: "approach", label: "Approach & map wall", frac: 0.12 },
++        { id: "apply", label: "Apply compound (single pass)", frac: 0.7 },
++        { id: "retract", label: "Retract & log", frac: 0.18 },
++      ],
++      knobs: [
++        { id: "coatMm", label: "Coat thickness", kind: "slider", min: 0.6, max: 2.0, step: 0.1, unit: " mm", default: 1.1 },
++        { id: "arm", label: "Arm mode", kind: "segment", options: ["Precise", "Balanced", "Fast"], default: "Balanced" },
++      ],
++    },
++    {
++      id: "finish", label: "Full L4/L5 finish", target: "wall", baseSeconds: 14,
++      phases: [
++        { id: "coat", label: "Compound coat", frac: 0.4 },
++        { id: "dry", label: "Flash-dry cycle", frac: 0.15 },
++        { id: "sand", label: "Progressive sanding", frac: 0.35 },
++        { id: "verify", label: "Self-check finish", frac: 0.1 },
++      ],
++      knobs: [
++        { id: "level", label: "Finish level", kind: "segment", options: ["L4", "L5"], default: "L5" },
++        { id: "grit", label: "Final grit", kind: "segment", options: ["100", "120", "150"], default: "120" },
++        { id: "arm", label: "Arm mode", kind: "segment", options: ["Precise", "Balanced", "Fast"], default: "Balanced" },
++      ],
++    },
++  ],
++  hanger: [
++    {
++      id: "wall", label: "Hang wall course", target: "hangWall", baseSeconds: 11,
++      phases: [
++        { id: "pick", label: "Vacuum-pick sheet", frac: 0.2 },
++        { id: "raise", label: "Raise to vertical", frac: 0.2 },
++        { id: "align", label: "Align to studs", frac: 0.2 },
++        { id: "fasten", label: "Auto-fasten", frac: 0.4 },
++      ],
++      knobs: [
++        { id: "sheet", label: "Sheet size", kind: "segment", options: ["4×8", "4×12"], default: "4×12" },
++        { id: "spacing", label: "Fastener spacing", kind: "slider", min: 8, max: 16, step: 1, unit: '"', default: 12 },
++      ],
++    },
++    {
++      id: "ceiling", label: "Hang ceiling sheet", target: "hangCeiling", baseSeconds: 13,
++      phases: [
++        { id: "pick", label: "Vacuum-pick sheet", frac: 0.2 },
++        { id: "lift", label: "Overhead lift", frac: 0.3 },
++        { id: "hold", label: "Hold to joists", frac: 0.2 },
++        { id: "fasten", label: "Auto-fasten", frac: 0.3 },
++      ],
++      knobs: [
++        { id: "sheet", label: "Sheet size", kind: "segment", options: ["4×8", "4×12"], default: "4×8" },
++        { id: "grip", label: "Grip vacuum", kind: "slider", min: 60, max: 95, step: 5, unit: " kPa", default: 80 },
++      ],
++    },
++  ],
++  cutter: [
++    {
++      id: "opening", label: "Cut a door opening", target: "cutSheet", baseSeconds: 8,
++      phases: [
++        { id: "scan", label: "Import BIM cut list", frac: 0.15 },
++        { id: "cut", label: "Route opening", frac: 0.7 },
++        { id: "label", label: "Label & stage", frac: 0.15 },
++      ],
++      knobs: [
++        { id: "tol", label: "Tolerance", kind: "slider", min: 0.5, max: 3, step: 0.5, unit: " mm", default: 1 },
++        { id: "blade", label: "Blade speed", kind: "segment", options: ["Clean", "Fast"], default: "Clean" },
++      ],
++    },
++    {
++      id: "nest", label: "Nest & panelize run", target: "cutSheet", baseSeconds: 12,
++      phases: [
++        { id: "opt", label: "Optimize nesting", frac: 0.25 },
++        { id: "cut", label: "Cut panels", frac: 0.6 },
++        { id: "label", label: "Label & sequence", frac: 0.15 },
++      ],
++      knobs: [
++        { id: "optimize", label: "Waste optimizer", kind: "toggle", default: true },
++        { id: "sheets", label: "Sheets in run", kind: "slider", min: 4, max: 40, step: 2, unit: "", default: 12 },
++      ],
++    },
++  ],
++  amr: [
++    {
++      id: "deliver", label: "Deliver stack to zone", target: "zone", baseSeconds: 10,
++      phases: [
++        { id: "load", label: "Load at staging", frac: 0.15 },
++        { id: "travel", label: "Navigate to zone", frac: 0.45 },
++        { id: "place", label: "Lower & place", frac: 0.25 },
++        { id: "return", label: "Return", frac: 0.15 },
++      ],
++      knobs: [
++        { id: "payload", label: "Payload", kind: "slider", min: 4, max: 16, step: 2, unit: " sheets", default: 10 },
++        { id: "speed", label: "Travel mode", kind: "segment", options: ["Cautious", "Standard"], default: "Standard" },
++      ],
++    },
++    {
++      id: "jit", label: "Just-in-time feed", target: "zone", baseSeconds: 12,
++      phases: [
++        { id: "sync", label: "Sync to hanger queue", frac: 0.2 },
++        { id: "shuttle", label: "Shuttle sheets", frac: 0.6 },
++        { id: "idle", label: "Stage next", frac: 0.2 },
++      ],
++      knobs: [
++        { id: "cadence", label: "Feed cadence", kind: "slider", min: 2, max: 10, step: 1, unit: "/hr", default: 6 },
++      ],
++    },
++  ],
++  qa: [
++    {
++      id: "scan", label: "Scan a wall", target: "qaWall", baseSeconds: 9,
++      phases: [
++        { id: "position", label: "Position at wall", frac: 0.15 },
++        { id: "sweep", label: "Raking-light sweep", frac: 0.65 },
++        { id: "report", label: "Generate heatmap", frac: 0.2 },
++      ],
++      knobs: [
++        { id: "res", label: "Scan resolution", kind: "segment", options: ["Std", "High"], default: "High" },
++        { id: "thresh", label: "Defect threshold", kind: "slider", min: 1, max: 5, step: 1, unit: " mm", default: 2 },
++      ],
++    },
++    {
++      id: "verify", label: "Full L5 verification", target: "qaWall", baseSeconds: 12,
++      phases: [
++        { id: "sweep", label: "Multi-angle sweep", frac: 0.55 },
++        { id: "score", label: "Score flatness", frac: 0.25 },
++        { id: "doc", label: "As-built record", frac: 0.2 },
++      ],
++      knobs: [
++        { id: "level", label: "Rubric", kind: "segment", options: ["L4", "L5"], default: "L5" },
++        { id: "angle", label: "Light angle", kind: "slider", min: 10, max: 40, step: 5, unit: "°", default: 20 },
++      ],
++    },
++  ],
++};
++
++export function defaultKnobs(job: JobDef): KnobValues {
++  const v: KnobValues = {};
++  for (const k of job.knobs) v[k.id] = k.default;
++  return v;
++}
++
++function seg(job: JobDef, values: KnobValues, id: string): string {
++  return String(values[id] ?? job.knobs.find((k) => k.id === id)?.default ?? "");
++}
++function nval(values: KnobValues, id: string, d = 0): number {
++  const v = values[id];
++  return typeof v === "number" ? v : d;
++}
++
++/** Duration in seconds after knob adjustments (used to scale the animation). */
++export function jobDuration(job: JobDef, values: KnobValues): number {
++  let m = 1;
++  const arm = seg(job, values, "arm");
++  if (arm === "Precise") m *= 1.35;
++  if (arm === "Fast") m *= 0.75;
++  if (job.id === "finish" && seg(job, values, "level") === "L5") m *= 1.2;
++  if (job.id === "nest") m *= 0.6 + nval(values, "sheets", 12) / 40;
++  if (job.id === "deliver") m *= 0.7 + nval(values, "payload", 10) / 20;
++  return Math.max(3, job.baseSeconds * m);
++}
++
++export function phaseAt(job: JobDef, progress: number): { label: string; index: number } {
++  let acc = 0;
++  for (let i = 0; i < job.phases.length; i++) {
++    acc += job.phases[i].frac;
++    if (progress <= acc + 1e-6) return { label: job.phases[i].label, index: i };
++  }
++  const last = job.phases[job.phases.length - 1];
++  return { label: last.label, index: job.phases.length - 1 };
++}
++
++/** Modelled live outcome at a given progress (0..1). */
++export function outcome(robotId: RobotId, job: JobDef, values: KnobValues, progress: number): { metrics: Metric[]; quality: number; valueLine: string } {
++  const p = Math.min(Math.max(progress, 0), 1);
++  const good = (v: string): Metric => ({ label: "", value: v, tone: "good" });
++  void good;
++
++  if (robotId === "finisher") {
++    const area = 72; // sqft of the demo wall
++    const coat = nval(values, "coatMm", 1.1);
++    const level = job.id === "finish" ? seg(job, values, "level") : "L4";
++    const arm = seg(job, values, "arm");
++    const q = (level === "L5" ? 99.2 : 98.4) - (arm === "Fast" ? 1.6 : 0) + (arm === "Precise" ? 0.4 : 0);
++    return {
++      quality: q,
++      valueLine: `A ${level} finish crews take 5–7 days to hand-sand, delivered in one supervised pass.`,
++      metrics: [
++        { label: "Wall finished", value: `${Math.round(area * p)} / ${area} sqft`, tone: "good" },
++        { label: "Compound used", value: `${(area * coat * 0.0013 * p).toFixed(1)} gal` },
++        { label: "Dust captured", value: "~99%", tone: "good" },
++        { label: "Finish quality", value: `${q.toFixed(1)}%`, tone: q > 98.5 ? "good" : "warn" },
++      ],
++    };
++  }
++  if (robotId === "hanger") {
++    const size = seg(job, values, "sheet");
++    const perSheet = size === "4×12" ? 48 : 32;
++    const total = job.id === "ceiling" ? 1 : 4;
++    const placed = Math.floor(p * total + (p >= 1 ? 0 : 0.0001));
++    const spacing = nval(values, "spacing", 12);
++    return {
++      quality: 99,
++      valueLine: "Removes the most injury-prone task on site — no crew straining overhead with 50–100 lb sheets.",
++      metrics: [
++        { label: "Sheets hung", value: `${placed} / ${total}`, tone: "good" },
++        { label: "Coverage", value: `${placed * perSheet} sqft` },
++        { label: "Fasteners", value: `${Math.round(placed * (96 / Math.max(spacing, 1)))}` },
++        { label: "Alignment", value: "±1.5 mm", tone: "good" },
++      ],
++    };
++  }
++  if (robotId === "cutter") {
++    const optimize = values["optimize"] !== false && job.id === "nest";
++    const wastePct = job.id === "nest" ? (optimize ? 6 : 22) : 9;
++    const sheets = job.id === "nest" ? nval(values, "sheets", 12) : 1;
++    return {
++      quality: 100 - wastePct,
++      valueLine: "Turns measure-and-cut error and 10–30% waste into a BIM-driven, labelled, sequenced panel run.",
++      metrics: [
++        { label: "Cut progress", value: `${Math.round(p * 100)}%`, tone: "good" },
++        { label: "Material waste", value: `${wastePct}%`, tone: wastePct < 10 ? "good" : "warn" },
++        { label: "Panels", value: `${Math.round(p * sheets)}` },
++        { label: "Dust captured", value: "~98%", tone: "good" },
++      ],
++    };
++  }
++  if (robotId === "amr") {
++    const payload = job.id === "deliver" ? nval(values, "payload", 10) : nval(values, "cadence", 6);
++    const moved = Math.round(p * payload);
++    return {
++      quality: 100,
++      valueLine: "Kills the back-and-shoulder injuries and crew idle time of manual sheet hauling and staging.",
++      metrics: [
++        { label: "Sheets delivered", value: `${moved} / ${payload}`, tone: "good" },
++        { label: "Crew idle saved", value: `${Math.round(p * payload * 3)} min`, tone: "good" },
++        { label: "Injury exposure", value: "0 lifts", tone: "good" },
++        { label: "Route", value: seg(job, values, "speed") || "auto" },
++      ],
++    };
++  }
++  // qa
++  const level = seg(job, values, "level") || "L5";
++  const defects = Math.round(p * 3);
++  const flat = (level === "L5" ? 99.3 : 98.6);
++  return {
++    quality: flat,
++    valueLine: "Gives the GC a defensible, documented Level 5 sign-off — no more finish disputes at handover.",
++    metrics: [
++      { label: "Wall scanned", value: `${Math.round(p * 100)}%`, tone: "good" },
++      { label: "Defects flagged", value: `${defects}`, tone: defects > 0 && p > 0.5 ? "warn" : "good" },
++      { label: "Flatness score", value: `${flat.toFixed(1)}%`, tone: "good" },
++      { label: "As-built record", value: p >= 1 ? "generated" : "…" },
++    ],
++  };
++}
+diff --git a/app/robots-demo/scene/Workpieces.tsx b/app/robots-demo/scene/Workpieces.tsx
+new file mode 100644
+index 0000000..ebbb314
+--- /dev/null
++++ b/app/robots-demo/scene/Workpieces.tsx
+@@ -0,0 +1,111 @@
++"use client";
++
++const GYPSUM = "#EDE9E0";
++const MUD = "#d9c9a8";
++const SMOOTH = "#ffffff";
++
++function clamp01(t: number) { return Math.min(1, Math.max(0, t)); }
++
++/** Finishing target: strips turn from raw → mud → sanded-smooth as the job runs. */
++export function FinishWall({ progress, task }: { progress: number; task: string }) {
++  const strips = 6;
++  return (
++    <group position={[0, 1.2, 1.2]}>
++      {/* studs */}
++      {[-1.2, -0.6, 0, 0.6, 1.2].map((sx) => (
++        <mesh key={sx} position={[sx, 0, -0.05]}><boxGeometry args={[0.09, 2.3, 0.09]} /><meshStandardMaterial color="#7c8496" /></mesh>
++      ))}
++      {Array.from({ length: strips }).map((_, i) => {
++        const pos = i / strips;
++        let color = GYPSUM, rough = 0.95;
++        if (task === "finish") {
++          const mud = clamp01(progress / 0.4);
++          const sand = clamp01((progress - 0.55) / 0.35);
++          if (sand > pos) { color = SMOOTH; rough = 0.3; }
++          else if (mud > pos) { color = MUD; rough = 0.8; }
++        } else {
++          if (progress > pos) { color = MUD; rough = 0.8; }
++        }
++        return (
++          <mesh key={i} position={[0, -1.15 + (i + 0.5) * (2.3 / strips), 0]} castShadow>
++            <boxGeometry args={[2.9, 2.3 / strips - 0.02, 0.03]} />
++            <meshStandardMaterial color={color} roughness={rough} />
++          </mesh>
++        );
++      })}
++    </group>
++  );
++}
++
++/** Hanging target: bare studs that fill with gypsum sheets as they are hung. */
++export function HangWall({ progress, task }: { progress: number; task: string }) {
++  const ceiling = task === "ceiling";
++  const total = ceiling ? 2 : 4;
++  const placed = Math.floor(progress * total + 0.0001);
++  const cols = 2;
++  return (
++    <group position={ceiling ? [0, 2.35, 0.4] : [0, 1.2, 1.2]} rotation={ceiling ? [Math.PI / 2, 0, 0] : [0, 0, 0]}>
++      {[-1.2, -0.4, 0.4, 1.2].map((sx) => (
++        <mesh key={sx} position={[sx, 0, -0.05]}><boxGeometry args={[0.09, 2.3, 0.09]} /><meshStandardMaterial color="#7c8496" /></mesh>
++      ))}
++      {Array.from({ length: total }).map((_, i) => {
++        if (i >= placed) return null;
++        const c = i % cols, r = Math.floor(i / cols);
++        return (
++          <mesh key={i} castShadow position={[-0.72 + c * 1.44, ceiling ? -0.55 + r * 1.1 : -0.55 + r * 1.1, 0]}>
++            <boxGeometry args={[1.4, 1.06, 0.03]} /><meshStandardMaterial color={GYPSUM} roughness={0.95} />
++          </mesh>
++        );
++      })}
++    </group>
++  );
++}
++
++/** Cutting target: a door opening is routed into the panel as the job runs. */
++export function CutOpening({ progress }: { progress: number }) {
++  const open = clamp01((progress - 0.15) / 0.7);
++  return (
++    <group position={[0.2, 0.42, 0]}>
++      <mesh position={[0, 0.001, 0]} scale={[open, 1, open]}>
++        <boxGeometry args={[0.5, 0.02, 0.7]} /><meshStandardMaterial color="#0b1220" />
++      </mesh>
++    </group>
++  );
++}
++
++/** Delivery zone: a marked floor target that stacks sheets as the AMR drops them. */
++export function DeliveryZone({ progress }: { progress: number }) {
++  const stack = Math.floor(clamp01((progress - 0.55) / 0.45) * 6);
++  return (
++    <group position={[1.4, 0, 0]}>
++      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
++        <planeGeometry args={[1.1, 0.9]} /><meshStandardMaterial color="#F97316" transparent opacity={0.25} />
++      </mesh>
++      {Array.from({ length: stack }).map((_, i) => (
++        <mesh key={i} position={[0, 0.05 + i * 0.05, 0]}><boxGeometry args={[0.9, 0.04, 0.6]} /><meshStandardMaterial color={GYPSUM} roughness={0.95} /></mesh>
++      ))}
++    </group>
++  );
++}
++
++/** QA target: a heatmap reveals left→right as the scanner sweeps; a couple of defects flag amber. */
++export function QAWall({ progress }: { progress: number }) {
++  const cols = 8, rows = 4;
++  const defects = new Set([10, 21]);
++  return (
++    <group position={[0, 1.2, 1.2]}>
++      <mesh position={[0, 0, -0.02]}><boxGeometry args={[2.9, 2.3, 0.03]} /><meshStandardMaterial color={SMOOTH} roughness={0.3} /></mesh>
++      {Array.from({ length: cols * rows }).map((_, k) => {
++        const c = k % cols, r = Math.floor(k / cols);
++        if (c / cols > progress) return null;
++        const bad = defects.has(k);
++        return (
++          <mesh key={k} position={[-1.27 + c * 0.36, -0.86 + r * 0.57, 0.02]}>
++            <boxGeometry args={[0.32, 0.5, 0.01]} />
++            <meshStandardMaterial color={bad ? "#f59e0b" : "#34d399"} emissive={bad ? "#f59e0b" : "#065f46"} emissiveIntensity={0.35} transparent opacity={0.75} />
++          </mesh>
++        );
++      })}
++    </group>
++  );
++}
