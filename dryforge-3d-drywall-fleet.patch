@@ -1,0 +1,982 @@
+diff --git a/app/components/robots3d/DrywallRobots.tsx b/app/components/robots3d/DrywallRobots.tsx
+new file mode 100644
+index 0000000..bdac747
+--- /dev/null
++++ b/app/components/robots3d/DrywallRobots.tsx
+@@ -0,0 +1,213 @@
++"use client";
++
++import { useRef } from "react";
++import { useFrame } from "@react-three/fiber";
++import * as THREE from "three";
++import type { RobotId } from "../../lib/fleet";
++
++const DARK = "#1E293B";
++const STEEL = "#94A3B8";
++const GYPSUM = "#EDE9E0";
++
++function lerp(a: number, b: number, t: number) { return a + (b - a) * t; }
++function clamp01(t: number) { return Math.min(1, Math.max(0, t)); }
++
++/* ---- shared wheeled base ---- */
++function Wheels({ running, w = 0.6, d = 0.44, y = 0.09 }: { running: boolean; w?: number; d?: number; y?: number }) {
++  const g = useRef<THREE.Group>(null);
++  useFrame((_, dt) => { if (g.current && running) g.current.children.forEach((c) => (c.rotation.x -= dt * 6)); });
++  const xs = [-w / 2, w / 2];
++  const zs = [-d / 2, d / 2];
++  return (
++    <group ref={g}>
++      {xs.flatMap((x) => zs.map((z) => (
++        <mesh key={`${x}${z}`} position={[x, y, z]} rotation={[0, 0, Math.PI / 2]}>
++          <cylinderGeometry args={[0.1, 0.1, 0.08, 16]} />
++          <meshStandardMaterial color={DARK} roughness={0.7} />
++        </mesh>
++      )))}
++    </group>
++  );
++}
++
++function Base({ color, w = 0.7, h = 0.24, d = 0.55 }: { color: string; w?: number; h?: number; d?: number }) {
++  return (
++    <mesh castShadow position={[0, 0.22, 0]}>
++      <boxGeometry args={[w, h, d]} />
++      <meshStandardMaterial color={color} roughness={0.5} metalness={0.15} />
++    </mesh>
++  );
++}
++
++/* ============================ 1. FINISHER ============================ */
++function Finisher({ running, accent }: { running: boolean; accent: string }) {
++  const shoulder = useRef<THREE.Group>(null);
++  const forearm = useRef<THREE.Group>(null);
++  const disc = useRef<THREE.Mesh>(null);
++  useFrame((s) => {
++    const t = running ? s.clock.getElapsedTime() : 0;
++    const sweep = Math.sin(t * 1.1); // up/down pass
++    if (shoulder.current) shoulder.current.rotation.x = lerp(-0.15, -0.95, (sweep + 1) / 2);
++    if (forearm.current) forearm.current.rotation.x = lerp(0.5, 1.2, (sweep + 1) / 2);
++    if (disc.current && running) disc.current.rotation.z -= 0.6;
++  });
++  return (
++    <group>
++      <Base color={accent} />
++      <Wheels running={running} />
++      {/* vertical mast */}
++      <mesh position={[0, 1.05, -0.18]}><boxGeometry args={[0.14, 1.7, 0.14]} /><meshStandardMaterial color={STEEL} metalness={0.3} roughness={0.4} /></mesh>
++      {/* arm assembly on mast */}
++      <group ref={shoulder} position={[0, 1.55, -0.12]}>
++        <mesh position={[0, 0, 0.28]}><boxGeometry args={[0.1, 0.1, 0.6]} /><meshStandardMaterial color={DARK} /></mesh>
++        <group ref={forearm} position={[0, 0, 0.56]}>
++          <mesh position={[0, 0, 0.22]}><boxGeometry args={[0.08, 0.08, 0.46]} /><meshStandardMaterial color={DARK} /></mesh>
++          {/* end effector: sanding disc + spray nozzle */}
++          <group position={[0, 0, 0.46]}>
++            <mesh ref={disc} rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.12, 0.12, 0.03, 24]} /><meshStandardMaterial color={accent} roughness={0.6} /></mesh>
++            <mesh position={[0.14, 0, 0]}><boxGeometry args={[0.05, 0.05, 0.12]} /><meshStandardMaterial color={STEEL} /></mesh>
++          </group>
++        </group>
++      </group>
++    </group>
++  );
++}
++
++/* ============================ 2. HANGER ============================ */
++function Hanger({ running, accent }: { running: boolean; accent: string }) {
++  const arm = useRef<THREE.Group>(null);
++  const sheet = useRef<THREE.Group>(null);
++  const driver = useRef<THREE.Mesh>(null);
++  useFrame((s) => {
++    const t = running ? (s.clock.getElapsedTime() * 0.28) % 1 : 0;
++    // 0-0.35 raise flat->vertical, 0.35-0.55 push to wall, 0.55-0.85 fasten, 0.85-1 reset
++    let pitch = -Math.PI / 2, push = 0, spin = 0;
++    if (t < 0.35) pitch = lerp(-Math.PI / 2, 0, clamp01(t / 0.35));
++    else if (t < 0.55) { pitch = 0; push = lerp(0, 0.18, clamp01((t - 0.35) / 0.2)); }
++    else if (t < 0.85) { pitch = 0; push = 0.18; spin = 1; }
++    else { pitch = lerp(0, -Math.PI / 2, clamp01((t - 0.85) / 0.15)); }
++    if (arm.current) arm.current.rotation.x = pitch;
++    if (sheet.current) sheet.current.position.z = 0.5 + push;
++    if (driver.current && spin) driver.current.rotation.z -= 0.8;
++  });
++  return (
++    <group>
++      <Base color={accent} w={0.8} d={0.62} />
++      <Wheels running={running} w={0.72} d={0.5} />
++      <mesh position={[0, 0.7, -0.2]}><boxGeometry args={[0.18, 0.9, 0.18]} /><meshStandardMaterial color={STEEL} metalness={0.3} /></mesh>
++      <group ref={arm} position={[0, 1.05, -0.12]}>
++        {/* holds sheet */}
++        <group ref={sheet} position={[0, 0, 0.5]}>
++          <mesh castShadow><boxGeometry args={[1.15, 0.02, 0.78]} /><meshStandardMaterial color={GYPSUM} roughness={0.95} /></mesh>
++          {/* vacuum grippers */}
++          {[[-0.35, 0.2], [0.35, 0.2], [-0.35, -0.2], [0.35, -0.2]].map(([x, z], i) => (
++            <mesh key={i} position={[x, -0.06, z]}><cylinderGeometry args={[0.06, 0.06, 0.1, 12]} /><meshStandardMaterial color={DARK} /></mesh>
++          ))}
++          {/* fastener driver */}
++          <mesh ref={driver} position={[0.5, 0.08, 0.3]}><cylinderGeometry args={[0.03, 0.03, 0.14, 10]} /><meshStandardMaterial color={accent} /></mesh>
++        </group>
++      </group>
++    </group>
++  );
++}
++
++/* ============================ 3. CUTTER (gantry) ============================ */
++function Cutter({ running, accent }: { running: boolean; accent: string }) {
++  const carriage = useRef<THREE.Group>(null);
++  const head = useRef<THREE.Mesh>(null);
++  const cut = useRef<THREE.Mesh>(null);
++  useFrame((s) => {
++    const t = running ? (s.clock.getElapsedTime() * 0.3) % 1 : 0;
++    if (carriage.current) carriage.current.position.x = lerp(-0.55, 0.55, t);
++    if (head.current && running) head.current.rotation.y += 0.4;
++    if (cut.current) { cut.current.scale.x = Math.max(0.001, t); cut.current.position.x = lerp(-0.55, 0, t); }
++  });
++  return (
++    <group>
++      {/* table + sheet */}
++      <mesh position={[0, 0.35, 0]}><boxGeometry args={[1.5, 0.08, 1.0]} /><meshStandardMaterial color={DARK} roughness={0.8} /></mesh>
++      <mesh position={[0, 0.4, 0]}><boxGeometry args={[1.35, 0.02, 0.85]} /><meshStandardMaterial color={GYPSUM} roughness={0.95} /></mesh>
++      {/* cut line */}
++      <mesh ref={cut} position={[0, 0.42, 0]}><boxGeometry args={[1.1, 0.008, 0.015]} /><meshStandardMaterial color="#334155" /></mesh>
++      {/* gantry legs + rail */}
++      {[[-0.7, 0.5], [0.7, 0.5], [-0.7, -0.5], [0.7, -0.5]].map(([x, z], i) => (
++        <mesh key={i} position={[x, 0.7, z]}><boxGeometry args={[0.06, 0.7, 0.06]} /><meshStandardMaterial color={STEEL} /></mesh>
++      ))}
++      <mesh position={[0, 1.03, 0.5]}><boxGeometry args={[1.5, 0.06, 0.06]} /><meshStandardMaterial color={STEEL} /></mesh>
++      <mesh position={[0, 1.03, -0.5]}><boxGeometry args={[1.5, 0.06, 0.06]} /><meshStandardMaterial color={STEEL} /></mesh>
++      {/* carriage travels X, holds a cutting head that reaches down */}
++      <group ref={carriage} position={[0, 1.03, 0]}>
++        <mesh position={[0, 0, 0]}><boxGeometry args={[0.12, 0.1, 1.0]} /><meshStandardMaterial color={accent} /></mesh>
++        <mesh position={[0, -0.32, 0]}><boxGeometry args={[0.08, 0.55, 0.08]} /><meshStandardMaterial color={DARK} /></mesh>
++        <mesh ref={head} position={[0, -0.6, 0]}><cylinderGeometry args={[0.07, 0.05, 0.12, 16]} /><meshStandardMaterial color={accent} metalness={0.4} /></mesh>
++      </group>
++    </group>
++  );
++}
++
++/* ============================ 4. AMR + lift ============================ */
++function Amr({ running, accent }: { running: boolean; accent: string }) {
++  const body = useRef<THREE.Group>(null);
++  const lift = useRef<THREE.Group>(null);
++  useFrame((s) => {
++    const t = s.clock.getElapsedTime();
++    if (body.current && running) body.current.position.x = Math.sin(t * 0.5) * 0.5;
++    if (lift.current) lift.current.position.y = 0.5 + (running ? (Math.sin(t * 1.2) * 0.5 + 0.5) * 0.25 : 0);
++  });
++  return (
++    <group ref={body}>
++      <Base color={accent} w={0.9} h={0.2} d={0.7} />
++      <Wheels running={running} w={0.82} d={0.6} />
++      {/* mast */}
++      {[-0.34, 0.34].map((x) => (
++        <mesh key={x} position={[x, 0.75, -0.28]}><boxGeometry args={[0.06, 1.0, 0.06]} /><meshStandardMaterial color={STEEL} /></mesh>
++      ))}
++      {/* fork lift carrying a stack of sheets */}
++      <group ref={lift} position={[0, 0.5, 0.05]}>
++        <mesh position={[0, -0.03, 0.2]}><boxGeometry args={[0.8, 0.04, 0.5]} /><meshStandardMaterial color={DARK} /></mesh>
++        {[0, 1, 2, 3].map((i) => (
++          <mesh key={i} castShadow position={[0, 0.03 + i * 0.05, 0.2]}><boxGeometry args={[0.75, 0.04, 0.46]} /><meshStandardMaterial color={GYPSUM} roughness={0.95} /></mesh>
++        ))}
++      </group>
++    </group>
++  );
++}
++
++/* ============================ 5. QA scanner ============================ */
++function Qa({ running, accent }: { running: boolean; accent: string }) {
++  const barY = useRef<THREE.Group>(null);
++  const bar = useRef<THREE.MeshStandardMaterial>(null);
++  const cam = useRef<THREE.Group>(null);
++  useFrame((s) => {
++    const t = s.clock.getElapsedTime();
++    if (barY.current) barY.current.position.y = 1.0 + (running ? Math.sin(t * 1.4) * 0.55 : 0);
++    if (bar.current) bar.current.emissiveIntensity = running ? 0.6 + Math.sin(t * 6) * 0.3 : 0.05;
++    if (cam.current) cam.current.rotation.y = running ? Math.sin(t * 0.8) * 0.25 : 0;
++  });
++  return (
++    <group>
++      <Base color={STEEL} />
++      <Wheels running={running} />
++      <mesh position={[0, 0.9, -0.15]}><boxGeometry args={[0.1, 1.4, 0.1]} /><meshStandardMaterial color={DARK} /></mesh>
++      {/* camera head */}
++      <group ref={cam} position={[0, 1.6, -0.1]}>
++        <mesh><boxGeometry args={[0.24, 0.14, 0.16]} /><meshStandardMaterial color={accent} /></mesh>
++        <mesh position={[0, 0, 0.1]}><sphereGeometry args={[0.05, 16, 16]} /><meshStandardMaterial color="#0b1220" metalness={0.6} roughness={0.2} /></mesh>
++      </group>
++      {/* raking-light bar reaching toward wall, sweeps vertically */}
++      <group ref={barY} position={[0, 1.0, 0.35]}>
++        <mesh><boxGeometry args={[0.9, 0.05, 0.05]} /><meshStandardMaterial ref={bar} color={accent} emissive={accent} emissiveIntensity={0.4} /></mesh>
++      </group>
++    </group>
++  );
++}
++
++export default function RobotModel({ id, running, accent }: { id: RobotId; running: boolean; accent: string }) {
++  switch (id) {
++    case "finisher": return <Finisher running={running} accent={accent} />;
++    case "hanger": return <Hanger running={running} accent={accent} />;
++    case "cutter": return <Cutter running={running} accent={accent} />;
++    case "amr": return <Amr running={running} accent={accent} />;
++    case "qa": return <Qa running={running} accent={accent} />;
++  }
++}
+diff --git a/app/components/robots3d/Env.tsx b/app/components/robots3d/Env.tsx
+new file mode 100644
+index 0000000..7b78e46
+--- /dev/null
++++ b/app/components/robots3d/Env.tsx
+@@ -0,0 +1,48 @@
++"use client";
++
++const GYPSUM = "#EDE9E0";
++
++export function Lights({ accent = "#F97316" }: { accent?: string }) {
++  return (
++    <>
++      <ambientLight intensity={0.7} />
++      <directionalLight position={[5, 8, 5]} intensity={1.15} castShadow shadow-mapSize={[1024, 1024]} />
++      <pointLight position={[-4, 3, 3]} intensity={14} color={accent} distance={16} />
++    </>
++  );
++}
++
++export function Floor({ size = 12 }: { size?: number }) {
++  return (
++    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
++      <planeGeometry args={[size, size]} />
++      <meshStandardMaterial color="#0e1626" roughness={0.95} metalness={0.05} />
++    </mesh>
++  );
++}
++
++/** A framed drywall wall section with studs behind, and an optional finished sweep. */
++export function WallSection({ x = 1.35, finished = 0 }: { x?: number; finished?: number }) {
++  const strips = 6;
++  return (
++    <group position={[0, 1.2, x]} rotation={[0, Math.PI, 0]}>
++      {/* studs */}
++      {[-1.2, -0.6, 0, 0.6, 1.2].map((sx) => (
++        <mesh key={sx} position={[sx, 0, 0.04]}>
++          <boxGeometry args={[0.09, 2.3, 0.09]} />
++          <meshStandardMaterial color="#7c8496" />
++        </mesh>
++      ))}
++      {/* gypsum board strips that turn "finished" as `finished` grows bottom->top */}
++      {Array.from({ length: strips }).map((_, i) => {
++        const done = finished > i / strips;
++        return (
++          <mesh key={i} position={[0, -1.15 + (i + 0.5) * (2.3 / strips), 0]} castShadow receiveShadow>
++            <boxGeometry args={[2.9, 2.3 / strips - 0.01, 0.03]} />
++            <meshStandardMaterial color={done ? "#ffffff" : GYPSUM} roughness={done ? 0.35 : 0.95} />
++          </mesh>
++        );
++      })}
++    </group>
++  );
++}
+diff --git a/app/robots-demo/RobotShowcase.tsx b/app/robots-demo/RobotShowcase.tsx
+index 0ba038b..02e1c05 100644
+--- a/app/robots-demo/RobotShowcase.tsx
++++ b/app/robots-demo/RobotShowcase.tsx
+@@ -1,10 +1,14 @@
+ "use client";
+ 
+-import { useMemo, useRef, useState } from "react";
++import { useMemo, useRef, useState, useSyncExternalStore } from "react";
++import { Canvas } from "@react-three/fiber";
++import { OrbitControls, ContactShadows } from "@react-three/drei";
+ import { motion, AnimatePresence } from "framer-motion";
+ import {
+-  ArrowRight, Cpu, ShieldCheck, Activity, Wrench, Boxes, Info, Play, Loader2, CheckCircle2,
++  ArrowRight, Cpu, ShieldCheck, Activity, Wrench, Boxes, Info, Play, Pause, Loader2, CheckCircle2,
+ } from "lucide-react";
++import RobotModel from "../components/robots3d/DrywallRobots";
++import { Lights, Floor, WallSection } from "../components/robots3d/Env";
+ import {
+   ROBOTS, MARKET_FACTS, computePlan, money, num,
+   type RobotId, type JobConfig, DEFAULT_JOB,
+@@ -16,15 +20,33 @@ const READINESS_STYLE: Record<string, string> = {
+   roadmap: "bg-slate-100 text-slate-600 border-slate-200",
+ };
+ 
++function RobotStage({ id, accent, running }: { id: RobotId; accent: string; running: boolean }) {
++  const mounted = useSyncExternalStore(() => () => {}, () => true, () => false);
++  if (!mounted) return <div className="grid h-full place-items-center text-sm text-slate-500">Loading 3D…</div>;
++  const showWall = id === "finisher" || id === "hanger" || id === "qa";
++  return (
++    <Canvas shadows camera={{ position: [3.2, 2.4, 3.6], fov: 42 }} dpr={[1, 1.75]}>
++      <color attach="background" args={["#0b1220"]} />
++      <Lights accent={accent} />
++      <Floor />
++      {showWall && <WallSection finished={id === "finisher" ? 0.6 : id === "qa" ? 1 : 0.15} />}
++      <group position={[0, 0, id === "cutter" || id === "amr" ? 0 : -0.4]}>
++        <RobotModel id={id} running={running} accent={accent} />
++      </group>
++      <ContactShadows position={[0, 0.01, 0]} opacity={0.5} scale={10} blur={2.4} far={5} />
++      <OrbitControls enableDamping minDistance={2.2} maxDistance={9} maxPolarAngle={Math.PI / 2.05} target={[0, 1, 0]} />
++    </Canvas>
++  );
++}
++
+ export default function RobotShowcase() {
+   const [activeId, setActiveId] = useState<RobotId>("finisher");
+   const active = ROBOTS.find((r) => r.id === activeId)!;
++  const [running, setRunning] = useState(true);
+ 
+-  // Fleet console state
+   const [cfg, setCfg] = useState<JobConfig>({ ...DEFAULT_JOB });
+   const [simState, setSimState] = useState<"idle" | "running" | "done">("idle");
+   const timer = useRef<number | null>(null);
+-
+   const plan = useMemo(() => computePlan(cfg), [cfg]);
+ 
+   const runSim = () => {
+@@ -32,19 +54,12 @@ export default function RobotShowcase() {
+     setSimState("running");
+     timer.current = window.setTimeout(() => setSimState("done"), 1400);
+   };
++  const set = (patch: Partial<JobConfig>) => { setCfg((c) => ({ ...c, ...patch })); if (simState === "done") setSimState("idle"); };
+ 
+-  const set = (patch: Partial<JobConfig>) => {
+-    setCfg((c) => ({ ...c, ...patch }));
+-    if (simState === "done") setSimState("idle");
+-  };
+-
+-  const mailtoPilot = `mailto:pilot@dryforge.ai?subject=${encodeURIComponent(
+-    `Founding pilot interest — ${active.name}`
+-  )}&body=${encodeURIComponent(`I'm interested in the ${active.name} for a GTA project. Let's talk.`)}`;
++  const mailtoPilot = `mailto:pilot@dryforge.ai?subject=${encodeURIComponent(`Founding pilot interest — ${active.name}`)}&body=${encodeURIComponent(`I'm interested in the ${active.name} for a GTA project. Let's talk.`)}`;
+ 
+   return (
+     <section className="mx-auto max-w-7xl px-4 sm:px-6 py-10">
+-      {/* Market facts */}
+       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+         {MARKET_FACTS.map((f) => (
+           <div key={f.label} className="rounded-xl border border-slate-200 bg-white p-4">
+@@ -55,110 +70,79 @@ export default function RobotShowcase() {
+         ))}
+       </div>
+ 
+-      {/* Robot selector */}
+       <div className="mt-10 flex gap-2 overflow-x-auto pb-1">
+         {ROBOTS.map((r) => (
+-          <button
+-            key={r.id}
+-            onClick={() => setActiveId(r.id)}
+-            className={`flex-shrink-0 rounded-lg border px-4 py-2.5 text-left transition-colors ${
+-              activeId === r.id ? "border-transparent text-white" : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+-            }`}
+-            style={activeId === r.id ? { backgroundColor: r.accent } : undefined}
+-          >
+-            <div className="text-[11px] font-semibold uppercase tracking-wide opacity-80">
+-              {r.order}. {r.phase}
+-            </div>
++          <button key={r.id} onClick={() => setActiveId(r.id)}
++            className={`flex-shrink-0 rounded-lg border px-4 py-2.5 text-left transition-colors ${activeId === r.id ? "border-transparent text-white" : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"}`}
++            style={activeId === r.id ? { backgroundColor: r.accent } : undefined}>
++            <div className="text-[11px] font-semibold uppercase tracking-wide opacity-80">{r.order}. {r.phase}</div>
+             <div className="whitespace-nowrap text-sm font-semibold">{r.shortName}</div>
+           </button>
+         ))}
+       </div>
+ 
+-      {/* Selected robot detail */}
+       <AnimatePresence mode="wait">
+-        <motion.div
+-          key={active.id}
+-          initial={{ opacity: 0, y: 8 }}
+-          animate={{ opacity: 1, y: 0 }}
+-          exit={{ opacity: 0, y: -8 }}
+-          transition={{ duration: 0.2 }}
+-          className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-[1.4fr_1fr]"
+-        >
+-          <div className="rounded-2xl border border-slate-200 bg-white p-6">
+-            <div className="flex flex-wrap items-center gap-3">
+-              <span className="grid h-9 w-9 place-items-center rounded-lg text-white" style={{ backgroundColor: active.accent }}>
+-                <Boxes className="h-5 w-5" />
+-              </span>
+-              <h2 className="text-2xl font-bold tracking-tight text-slate-900">{active.name}</h2>
+-              <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${READINESS_STYLE[active.readiness]}`}>
+-                {active.readinessLabel}
+-              </span>
++        <motion.div key={active.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}
++          className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-[1.3fr_1fr]">
++          <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-[#0b1220] aspect-[4/3] lg:aspect-auto lg:h-[520px]"
++            role="img" aria-label={`3D animation of the ${active.name}. ${active.howItWorks}`}>
++            <RobotStage id={active.id} accent={active.accent} running={running} />
++            <div className="pointer-events-none absolute right-3 top-3 rounded-md px-3 py-1.5 text-xs font-semibold text-white" style={{ backgroundColor: active.accent }}>{active.phase}</div>
++            <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-gradient-to-t from-black/70 to-transparent px-4 py-3">
++              <button onClick={() => setRunning((r) => !r)} className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90" style={{ backgroundColor: active.accent }} aria-label={running ? "Pause" : "Play"}>
++                {running ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />} {running ? "Pause" : "Play"}
++              </button>
++              <span className="text-[11px] text-slate-300">Drag to orbit</span>
+             </div>
+-
+-            <div className="mt-5 space-y-4">
+-              <Block icon={<Activity className="h-4 w-4" />} title="The pain it removes" body={active.painPoint} />
+-              <Block icon={<Wrench className="h-4 w-4" />} title="How it works" body={active.howItWorks} />
+-              <Block icon={<Cpu className="h-4 w-4" />} title="The DryForge software layer" body={active.dryforgeLayer} accent={active.accent} />
+-            </div>
+-
+-            {active.benchmarkNote && (
+-              <p className="mt-4 flex gap-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+-                <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
+-                {active.benchmarkNote}
+-              </p>
+-            )}
+           </div>
+ 
+           <div className="space-y-4">
+             <div className="rounded-2xl border border-slate-200 bg-white p-5">
+-              <h3 className="text-sm font-semibold text-slate-900">Specifications</h3>
+-              <dl className="mt-3 space-y-2">
++              <div className="flex flex-wrap items-center gap-2">
++                <span className="grid h-8 w-8 place-items-center rounded-lg text-white" style={{ backgroundColor: active.accent }}><Boxes className="h-4 w-4" /></span>
++                <h2 className="text-xl font-bold tracking-tight text-slate-900">{active.name}</h2>
++              </div>
++              <span className={`mt-2 inline-block rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${READINESS_STYLE[active.readiness]}`}>{active.readinessLabel}</span>
++              <div className="mt-4 space-y-3">
++                <Block icon={<Activity className="h-4 w-4" />} title="The pain it removes" body={active.painPoint} />
++                <Block icon={<Wrench className="h-4 w-4" />} title="How it works" body={active.howItWorks} />
++                <Block icon={<Cpu className="h-4 w-4" />} title="DryForge software layer" body={active.dryforgeLayer} accent={active.accent} />
++              </div>
++              {active.benchmarkNote && (
++                <p className="mt-3 flex gap-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600"><Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-400" />{active.benchmarkNote}</p>
++              )}
++            </div>
++            <div className="rounded-2xl border border-slate-200 bg-white p-5">
++              <dl className="space-y-2">
+                 {active.specs.map((s) => (
+-                  <div key={s.label} className="flex justify-between border-b border-slate-100 pb-2 text-sm last:border-0">
+-                    <dt className="text-slate-500">{s.label}</dt>
+-                    <dd className="font-mono font-semibold text-slate-900">{s.value}</dd>
+-                  </div>
++                  <div key={s.label} className="flex justify-between border-b border-slate-100 pb-2 text-sm last:border-0"><dt className="text-slate-500">{s.label}</dt><dd className="font-mono font-semibold text-slate-900">{s.value}</dd></div>
+                 ))}
+               </dl>
+-              <div className="mt-4 rounded-lg p-3 text-white" style={{ backgroundColor: active.accent }}>
++              <div className="mt-3 rounded-lg p-3 text-white" style={{ backgroundColor: active.accent }}>
+                 <div className="text-[11px] font-semibold uppercase tracking-wide opacity-80">Modelled labour reduction (design target)</div>
+                 <div className="text-2xl font-bold">{active.laborReductionPct}%</div>
+               </div>
+             </div>
+-
+-            <a href={mailtoPilot} className="flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90" style={{ backgroundColor: active.accent }}>
+-              Apply to pilot this robot <ArrowRight className="h-4 w-4" />
+-            </a>
++            <a href={mailtoPilot} className="flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90" style={{ backgroundColor: active.accent }}>Apply to pilot this robot <ArrowRight className="h-4 w-4" /></a>
+           </div>
+         </motion.div>
+       </AnimatePresence>
+ 
+-      {/* Fleet console */}
+       <div className="mt-12 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-6">
+-        <div className="flex items-center gap-2">
+-          <ShieldCheck className="h-5 w-5 text-[#F97316]" />
+-          <h3 className="text-lg font-bold text-slate-900">Fleet console</h3>
+-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Planning model</span>
+-        </div>
+-        <p className="mt-1 text-sm text-slate-600">Set the deployment and see the modelled economics update live. Assumptions are disclosed in the simulator.</p>
+-
++        <div className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-[#F97316]" /><h3 className="text-lg font-bold text-slate-900">Fleet console</h3><span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Planning model</span></div>
++        <p className="mt-1 text-sm text-slate-600">Set the deployment and see the modelled economics update live.</p>
+         <div className="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1fr]">
+           <div className="space-y-4">
+-            <Slider label="Job size" value={cfg.sqft} min={2000} max={120000} step={1000} unit=" sqft" onChange={(v) => set({ sqft: v })} display={num(cfg.sqft)} />
+-            <Slider label="Supervision ratio (robots per operator)" value={cfg.supervisionRatio} min={1} max={6} step={1} unit=":1" onChange={(v) => set({ supervisionRatio: v })} display={`${cfg.supervisionRatio}:1`} />
+-            <Slider label="RaaS rate" value={cfg.raasRate} min={0.6} max={2.5} step={0.05} unit=" /sqft" onChange={(v) => set({ raasRate: v })} display={money(cfg.raasRate).replace("$", "$")} />
+-            <Slider label="Loaded labour rate" value={cfg.laborRate} min={30} max={95} step={1} unit=" /hr" onChange={(v) => set({ laborRate: v })} display={money(cfg.laborRate)} />
+-
++            <Slider label="Job size" value={cfg.sqft} min={2000} max={120000} step={1000} display={`${num(cfg.sqft)} sqft`} onChange={(v) => set({ sqft: v })} />
++            <Slider label="Supervision (robots per operator)" value={cfg.supervisionRatio} min={1} max={6} step={1} display={`${cfg.supervisionRatio}:1`} onChange={(v) => set({ supervisionRatio: v })} />
++            <Slider label="RaaS rate ($/sqft)" value={cfg.raasRate} min={0.6} max={2.5} step={0.05} display={money(cfg.raasRate)} onChange={(v) => set({ raasRate: v })} />
++            <Slider label="Loaded labour rate" value={cfg.laborRate} min={30} max={95} step={1} display={`${money(cfg.laborRate)}/hr`} onChange={(v) => set({ laborRate: v })} />
+             <button onClick={runSim} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#0F172A] px-4 py-3 text-sm font-semibold text-white hover:bg-[#1E293B]">
+               {simState === "running" ? <Loader2 className="h-4 w-4 animate-spin" /> : simState === "done" ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <Play className="h-4 w-4" />}
+-              {simState === "running" ? "Simulating deployment…" : simState === "done" ? "Deployment simulated" : "Simulate deployment"}
++              {simState === "running" ? "Simulating…" : simState === "done" ? "Deployment simulated" : "Simulate deployment"}
+             </button>
+           </div>
+-
+-          <motion.div
+-            animate={{ opacity: simState === "running" ? 0.5 : 1 }}
+-            className="grid grid-cols-2 gap-3 self-start"
+-          >
++          <motion.div animate={{ opacity: simState === "running" ? 0.5 : 1 }} className="grid grid-cols-2 gap-3 self-start">
+             <Metric label="Labour hours saved" value={num(plan.laborHoursSaved)} tone="good" />
+             <Metric label="Schedule" value={`${num(plan.robotDays, 1)}d`} sub={`vs ${num(plan.manualDays, 1)}d manual`} />
+             <Metric label="RaaS cost" value={money(plan.raasCost)} />
+@@ -169,42 +153,9 @@ export default function RobotShowcase() {
+         </div>
+       </div>
+ 
+-      {/* Data flowback */}
+-      <div className="mt-10 rounded-2xl border border-slate-200 bg-white p-6">
+-        <h3 className="text-lg font-bold text-slate-900">Every robot feeds the DryForge brain</h3>
+-        <p className="mt-1 text-sm text-slate-600">Telemetry from each phase flows into one orchestration layer — the moat is the software and the data, not any single machine.</p>
+-        <div className="mt-6 grid grid-cols-1 items-center gap-4 md:grid-cols-[1fr_auto_1fr]">
+-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+-            {ROBOTS.map((r) => (
+-              <div key={r.id} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+-                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: r.accent }} />
+-                <span className="font-medium text-slate-700">{r.shortName}</span>
+-              </div>
+-            ))}
+-          </div>
+-          <ArrowRight className="mx-auto hidden h-6 w-6 text-slate-300 md:block" />
+-          <div className="rounded-xl bg-[#0F172A] p-5 text-white">
+-            <div className="text-sm font-bold">DryForge AI Orchestration</div>
+-            <ul className="mt-2 space-y-1 text-xs text-slate-300">
+-              <li>• Fleet scheduling & adaptive replanning</li>
+-              <li>• Live quality scoring & heatmaps</li>
+-              <li>• Predictive maintenance</li>
+-              <li>• Per-sqft ROI & audit trail</li>
+-              <li>• Procore / Autodesk hooks (planned)</li>
+-            </ul>
+-          </div>
+-        </div>
+-      </div>
+-
+-      {/* CTA */}
+       <div className="mt-10 flex flex-col items-center gap-4 rounded-2xl bg-[#0F172A] p-8 text-center text-white sm:flex-row sm:justify-between sm:text-left">
+-        <div>
+-          <h3 className="text-xl font-bold">See the fleet run a full job</h3>
+-          <p className="mt-1 text-sm text-slate-300">Configure a project and watch the DryForge planner orchestrate all five robots end to end.</p>
+-        </div>
+-        <a href="/simulator" className="inline-flex items-center gap-2 rounded-lg bg-[#F97316] px-6 py-3 text-sm font-semibold hover:bg-[#EA580C]">
+-          Open the fleet simulator <ArrowRight className="h-4 w-4" />
+-        </a>
++        <div><h3 className="text-xl font-bold">See the fleet run a full job in 3D</h3><p className="mt-1 text-sm text-slate-300">Configure a project and watch all five robots work the site end to end.</p></div>
++        <a href="/simulator" className="inline-flex items-center gap-2 rounded-lg bg-[#F97316] px-6 py-3 text-sm font-semibold hover:bg-[#EA580C]">Open the fleet simulator <ArrowRight className="h-4 w-4" /></a>
+       </div>
+     </section>
+   );
+@@ -213,34 +164,19 @@ export default function RobotShowcase() {
+ function Block({ icon, title, body, accent }: { icon: React.ReactNode; title: string; body: string; accent?: string }) {
+   return (
+     <div>
+-      <div className="flex items-center gap-2 text-sm font-semibold" style={accent ? { color: accent } : { color: "#0F172A" }}>
+-        {icon} {title}
+-      </div>
++      <div className="flex items-center gap-2 text-sm font-semibold" style={accent ? { color: accent } : { color: "#0F172A" }}>{icon} {title}</div>
+       <p className="mt-1 text-sm leading-relaxed text-slate-600">{body}</p>
+     </div>
+   );
+ }
+-
+ function Metric({ label, value, sub, tone = "default" }: { label: string; value: string; sub?: string; tone?: "default" | "good" | "warn" }) {
+   const color = tone === "good" ? "text-emerald-600" : tone === "warn" ? "text-amber-600" : "text-slate-900";
+-  return (
+-    <div className="rounded-xl border border-slate-200 bg-white p-4">
+-      <div className="text-[11px] uppercase tracking-wide text-slate-400">{label}</div>
+-      <div className={`mt-1 font-mono text-lg font-bold ${color}`}>{value}</div>
+-      {sub && <div className="text-[11px] text-slate-400">{sub}</div>}
+-    </div>
+-  );
++  return (<div className="rounded-xl border border-slate-200 bg-white p-4"><div className="text-[11px] uppercase tracking-wide text-slate-400">{label}</div><div className={`mt-1 font-mono text-lg font-bold ${color}`}>{value}</div>{sub && <div className="text-[11px] text-slate-400">{sub}</div>}</div>);
+ }
+-
+-function Slider({ label, value, min, max, step, unit, display, onChange }: {
+-  label: string; value: number; min: number; max: number; step: number; unit: string; display: string; onChange: (v: number) => void;
+-}) {
++function Slider({ label, value, min, max, step, display, onChange }: { label: string; value: number; min: number; max: number; step: number; display: string; onChange: (v: number) => void }) {
+   return (
+     <div>
+-      <div className="mb-1 flex items-center justify-between">
+-        <label className="text-xs font-medium text-slate-500">{label}</label>
+-        <span className="font-mono text-xs font-semibold text-slate-900">{display}{unit}</span>
+-      </div>
++      <div className="mb-1 flex items-center justify-between"><label className="text-xs font-medium text-slate-500">{label}</label><span className="font-mono text-xs font-semibold text-slate-900">{display}</span></div>
+       <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(parseFloat(e.target.value))} className="w-full accent-[#F97316]" aria-label={label} />
+     </div>
+   );
+diff --git a/app/simulator/FleetSimulator.tsx b/app/simulator/FleetSimulator.tsx
+index ac9eab4..61389ba 100644
+--- a/app/simulator/FleetSimulator.tsx
++++ b/app/simulator/FleetSimulator.tsx
+@@ -1,47 +1,79 @@
+ "use client";
+ 
+ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
++import { Canvas } from "@react-three/fiber";
++import { OrbitControls, ContactShadows } from "@react-three/drei";
+ import { motion } from "framer-motion";
+ import {
+   Play, Pause, RotateCcw, Printer, Zap, AlertTriangle, Users, Clock, Gauge,
+   DollarSign, Layers, CheckCircle2, Info,
+ } from "lucide-react";
++import RobotModel from "../components/robots3d/DrywallRobots";
++import { Lights, Floor } from "../components/robots3d/Env";
+ import {
+   ROBOTS, PHASE_ORDER, computePlan, money, num, MODEL_ASSUMPTIONS,
+   type JobConfig, DEFAULT_JOB, type Complexity, type FinishLevel, type Phase,
+ } from "../lib/fleet";
+ 
+-const COLS = 10;
+-const ROWS = 4;
+-const N = COLS * ROWS;
+ const PHASE_OFFSET: Record<Phase, number> = { material: 0, cutting: 0.12, hanging: 0.24, finishing: 0.36, qa: 0.48 };
+ const PHASE_SPAN = 0.52;
+-const STAGE_COLOR = ["#e2e8f0", "#bae6fd", "#ddd6fe", "#fde68a", "#fdba74", "#6ee7b7"];
++const STAGE_COLOR = ["#334155", "#0369a1", "#6d28d9", "#b45309", "#c2410c", "#047857"];
++const STAGE_LABEL = ["Raw", "Delivered", "Cut", "Hung", "Finished", "QA-verified"];
+ const SPEEDS = [2, 8, 24] as const;
++const WALL_W = 10;
++const WALL_Z = -2.2;
++const COLS = 12;
++const ROWS = 2;
+ 
+-interface Cell { i: number; x: number; y: number; workPos: number }
++function lerp(a: number, b: number, t: number) { return a + (b - a) * t; }
++function frontier(progress: number, phase: Phase) { return Math.min(Math.max((progress - PHASE_OFFSET[phase]) / PHASE_SPAN, 0), 1); }
+ 
+-function buildCells(w: number, h: number): Cell[] {
+-  const cw = w / COLS;
+-  const ch = h / ROWS;
+-  const cells: Cell[] = [];
+-  let idx = 0;
+-  for (let r = 0; r < ROWS; r++) {
+-    for (let c = 0; c < COLS; c++) {
+-      const col = r % 2 === 0 ? c : COLS - 1 - c;
+-      cells.push({ i: idx, x: col * cw, y: r * ch, workPos: idx / (N - 1) });
+-      idx++;
+-    }
+-  }
+-  return cells;
+-}
++interface Snap { progress: number; elapsedH: number; etaH: number }
+ 
+-function frontier(progress: number, phase: Phase): number {
+-  return Math.min(Math.max((progress - PHASE_OFFSET[phase]) / PHASE_SPAN, 0), 1);
++/* -------------------- 3D job-site scene -------------------- */
++function FleetScene({ fr, playing }: { fr: Record<Phase, number>; playing: boolean }) {
++  const panels = [];
++  for (let k = 0; k < COLS * ROWS; k++) {
++    const col = k % COLS;
++    const row = Math.floor(k / COLS);
++    const workPos = col / (COLS - 1);
++    let stage = 0;
++    for (const p of PHASE_ORDER) if (fr[p] > workPos) stage++;
++    const x = lerp(-WALL_W / 2, WALL_W / 2, col / (COLS - 1));
++    const y = 0.62 + row * 1.16;
++    panels.push(
++      <mesh key={k} position={[x, y, WALL_Z]} castShadow receiveShadow>
++        <boxGeometry args={[WALL_W / COLS - 0.05, 1.1, 0.06]} />
++        <meshStandardMaterial color={STAGE_COLOR[stage]} roughness={stage >= 4 ? 0.4 : 0.9} metalness={0.05} />
++      </mesh>
++    );
++  }
++  return (
++    <group>
++      <Lights accent="#F97316" />
++      <Floor size={18} />
++      {/* framing / plate */}
++      <mesh position={[0, 0.05, WALL_Z + 0.1]}><boxGeometry args={[WALL_W + 0.4, 0.1, 0.12]} /><meshStandardMaterial color="#475569" /></mesh>
++      {panels}
++      {/* five robots along the wall at their phase frontier */}
++      {ROBOTS.map((r) => {
++        const f = fr[r.phase];
++        const x = lerp(-WALL_W / 2 + 0.7, WALL_W / 2 - 0.7, f);
++        const dim = f <= 0.001 || f >= 0.999;
++        return (
++          <group key={r.id} position={[x, 0, WALL_Z + 1.15]} rotation={[0, Math.PI, 0]} scale={0.6}>
++            <group visible>
++              <RobotModel id={r.id} running={playing && !dim} accent={r.accent} />
++            </group>
++          </group>
++        );
++      })}
++      <ContactShadows position={[0, 0.01, 0]} opacity={0.45} scale={18} blur={2.5} far={6} />
++      <OrbitControls enableDamping minDistance={4} maxDistance={20} maxPolarAngle={Math.PI / 2.05} target={[0, 1.2, WALL_Z]} />
++    </group>
++  );
+ }
+ 
+-interface Snap { progress: number; elapsedH: number; etaH: number }
+-
+ export default function FleetSimulator() {
+   const [cfg, setCfg] = useState<JobConfig>({ ...DEFAULT_JOB });
+   const [playing, setPlaying] = useState(false);
+@@ -51,19 +83,16 @@ export default function FleetSimulator() {
+   const mounted = useSyncExternalStore(() => () => {}, () => true, () => false);
+ 
+   const plan = useMemo(() => computePlan(cfg), [cfg]);
+-  const baseEtaH = plan.robotDays * 8;
+ 
+   const elapsedRef = useRef(0);
+-  const etaRef = useRef(baseEtaH);
+-  const [snap, setSnap] = useState<Snap>(() => ({ progress: 0, elapsedH: 0, etaH: baseEtaH }));
++  const etaRef = useRef(plan.robotDays * 8);
++  const [snap, setSnap] = useState<Snap>(() => ({ progress: 0, elapsedH: 0, etaH: computePlan(DEFAULT_JOB).robotDays * 8 }));
+ 
+   const playingRef = useRef(playing);
+   const speedRef = useRef(speed);
+   useEffect(() => { playingRef.current = playing; }, [playing]);
+   useEffect(() => { speedRef.current = speed; }, [speed]);
+ 
+-  const cells = useMemo(() => buildCells(720, 300), []);
+-
+   const resetSim = useCallback((nextCfg: JobConfig) => {
+     const p = computePlan(nextCfg);
+     elapsedRef.current = 0;
+@@ -74,8 +103,6 @@ export default function FleetSimulator() {
+     setReplanning(false);
+   }, []);
+ 
+-  // Animation loop (single subscription). setState lives in a rAF callback, not
+-  // in the effect body, so it doesn't cascade.
+   useEffect(() => {
+     let raf = 0;
+     let last = performance.now();
+@@ -85,15 +112,11 @@ export default function FleetSimulator() {
+       last = t;
+       if (playingRef.current) {
+         elapsedRef.current += dt * speedRef.current;
+-        if (elapsedRef.current >= etaRef.current) {
+-          elapsedRef.current = etaRef.current;
+-          setPlaying(false);
+-        }
++        if (elapsedRef.current >= etaRef.current) { elapsedRef.current = etaRef.current; setPlaying(false); }
+       }
+       if (t - hudLast > 50) {
+         hudLast = t;
+-        const progress = Math.min(elapsedRef.current / etaRef.current, 1);
+-        setSnap({ progress, elapsedH: elapsedRef.current, etaH: etaRef.current });
++        setSnap({ progress: Math.min(elapsedRef.current / etaRef.current, 1), elapsedH: elapsedRef.current, etaH: etaRef.current });
+       }
+       raf = requestAnimationFrame(loop);
+     };
+@@ -102,9 +125,9 @@ export default function FleetSimulator() {
+   }, []);
+ 
+   const inject = (kind: "tight" | "delay" | "crew") => {
+-    if (kind === "tight") { etaRef.current *= 1.18; setLog((l) => [`Tight-space constraint — finishing paths re-planned (+18% ETA)`, ...l]); }
+-    if (kind === "delay") { etaRef.current += 6; setLog((l) => [`Material delivery delay injected — planner absorbed +6 h`, ...l]); }
+-    if (kind === "crew") { etaRef.current *= 0.88; setLog((l) => [`Added supervised unit — ETA pulled in 12%`, ...l]); }
++    if (kind === "tight") { etaRef.current *= 1.18; setLog((l) => ["Tight-space constraint — finishing paths re-planned (+18% ETA)", ...l]); }
++    if (kind === "delay") { etaRef.current += 6; setLog((l) => ["Material delivery delay injected — planner absorbed +6 h", ...l]); }
++    if (kind === "crew") { etaRef.current *= 0.88; setLog((l) => ["Added supervised unit — ETA pulled in 12%", ...l]); }
+     setReplanning(true);
+     window.setTimeout(() => setReplanning(false), 900);
+   };
+@@ -122,16 +145,9 @@ export default function FleetSimulator() {
+   const raasSoFar = plan.raasCost * progress;
+   const manualSoFar = plan.manualCost * progress;
+ 
+-  function cellStage(c: Cell): number {
+-    let s = 0;
+-    for (const p of PHASE_ORDER) if (fr[p] > c.workPos) s++;
+-    return s;
+-  }
+-
+   return (
+     <section className="mx-auto max-w-7xl px-4 sm:px-6 py-10">
+       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[340px_1fr]">
+-        {/* ---- config ---- */}
+         <aside className="space-y-4 print:hidden">
+           <div className="rounded-2xl border border-slate-200 bg-white p-5">
+             <h3 className="text-sm font-semibold text-slate-900">Project</h3>
+@@ -161,87 +177,49 @@ export default function FleetSimulator() {
+           </div>
+         </aside>
+ 
+-        {/* ---- stage + metrics ---- */}
+         <div className="space-y-4">
+-          <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-[#0b1220] p-4">
+-            <div className="flex items-center justify-between print:hidden">
++          <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-[#0b1220]">
++            <div className="flex items-center justify-between px-4 pt-3 print:hidden">
+               <div className="flex items-center gap-2 text-white">
+                 <Layers className="h-4 w-4 text-[#F97316]" />
+                 <span className="text-sm font-semibold">Job-site digital twin</span>
+-                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-300">top-down • simulated</span>
++                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-300">3D • simulated</span>
+               </div>
+               {replanning && (
+-                <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-1.5 rounded-md bg-amber-500/90 px-2.5 py-1 text-[11px] font-semibold text-amber-950">
+-                  <Zap className="h-3.5 w-3.5" /> Replanning…
+-                </motion.span>
++                <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-1.5 rounded-md bg-amber-500/90 px-2.5 py-1 text-[11px] font-semibold text-amber-950"><Zap className="h-3.5 w-3.5" /> Replanning…</motion.span>
+               )}
+             </div>
+ 
+-            {mounted ? (
+-              <svg viewBox="-20 -20 760 340" className="mt-3 w-full">
+-                {/* floor */}
+-                <rect x={-8} y={-8} width={736} height={316} rx={8} fill="#0e1626" stroke="#1e3a52" />
+-                {/* cells */}
+-                {cells.map((c) => {
+-                  const cw = 720 / COLS;
+-                  const ch = 300 / ROWS;
+-                  const stage = cellStage(c);
+-                  return (
+-                    <rect key={c.i} x={c.x + 1.5} y={c.y + 1.5} width={cw - 3} height={ch - 3} rx={3}
+-                      fill={STAGE_COLOR[stage]} opacity={stage === 0 ? 0.25 : 0.9}
+-                      style={{ transition: "fill 300ms" }} />
+-                  );
+-                })}
+-                {/* robots at their phase frontier */}
+-                {ROBOTS.map((r) => {
+-                  const f = fr[r.phase];
+-                  if (f >= 1 || f <= 0) return null;
+-                  const idx = Math.min(N - 1, Math.round(f * (N - 1)));
+-                  const c = cells[idx];
+-                  const cw = 720 / COLS;
+-                  const ch = 300 / ROWS;
+-                  return (
+-                    <g key={r.id} style={{ transition: "transform 200ms" }} transform={`translate(${c.x + cw / 2}, ${c.y + ch / 2})`}>
+-                      <circle r={13} fill={r.accent} stroke="#0b1220" strokeWidth={2} />
+-                      <text textAnchor="middle" dy={4} fontSize={9} fontWeight={700} fill="#0b1220">{r.shortName[0]}</text>
+-                    </g>
+-                  );
+-                })}
+-              </svg>
+-            ) : (
+-              <div className="grid h-[300px] place-items-center text-sm text-slate-500">Loading simulation…</div>
+-            )}
++            <div className="h-[420px] w-full">
++              {mounted ? (
++                <Canvas shadows camera={{ position: [0, 4.2, 8.5], fov: 42 }} dpr={[1, 1.75]}>
++                  <color attach="background" args={["#0b1220"]} />
++                  <FleetScene fr={fr} playing={playing} />
++                </Canvas>
++              ) : (
++                <div className="grid h-full place-items-center text-sm text-slate-500">Loading 3D job-site…</div>
++              )}
++            </div>
+ 
+-            {/* legend */}
+-            <div className="mt-3 flex flex-wrap gap-3 print:hidden">
+-              {["Raw", "Delivered", "Cut", "Hung", "Finished", "QA-verified"].map((label, i) => (
+-                <div key={label} className="flex items-center gap-1.5 text-[11px] text-slate-300">
+-                  <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: STAGE_COLOR[i] }} /> {label}
+-                </div>
++            <div className="flex flex-wrap gap-3 px-4 pb-2 print:hidden">
++              {STAGE_LABEL.map((label, i) => (
++                <div key={label} className="flex items-center gap-1.5 text-[11px] text-slate-300"><span className="h-3 w-3 rounded-sm" style={{ backgroundColor: STAGE_COLOR[i] }} /> {label}</div>
+               ))}
+             </div>
+ 
+-            {/* controls */}
+-            <div className="mt-4 flex items-center justify-between gap-3 print:hidden">
++            <div className="flex items-center justify-between gap-3 px-4 pb-4 print:hidden">
+               <div className="flex items-center gap-2">
+-                <button onClick={() => setPlaying((p) => !p)} disabled={done}
+-                  className="inline-flex items-center gap-2 rounded-lg bg-[#F97316] px-4 py-2 text-sm font-semibold text-white hover:bg-[#EA580C] disabled:opacity-40">
+-                  {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+-                  {playing ? "Pause" : snap.elapsedH > 0 ? "Resume" : "Run job"}
+-                </button>
+-                <button onClick={() => resetSim(cfg)} className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-white/10">
+-                  <RotateCcw className="h-4 w-4" /> Reset
++                <button onClick={() => setPlaying((p) => !p)} disabled={done} className="inline-flex items-center gap-2 rounded-lg bg-[#F97316] px-4 py-2 text-sm font-semibold text-white hover:bg-[#EA580C] disabled:opacity-40">
++                  {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />} {playing ? "Pause" : snap.elapsedH > 0 ? "Resume" : "Run job"}
+                 </button>
++                <button onClick={() => resetSim(cfg)} className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-white/10"><RotateCcw className="h-4 w-4" /> Reset</button>
+               </div>
+               <div className="flex items-center gap-1 rounded-md bg-black/40 p-1">
+-                {SPEEDS.map((sp) => (
+-                  <button key={sp} onClick={() => setSpeed(sp)} className={`rounded px-2.5 py-1 text-xs font-semibold ${speed === sp ? "bg-[#F97316] text-white" : "text-slate-300 hover:text-white"}`}>{sp}×</button>
+-                ))}
++                {SPEEDS.map((sp) => (<button key={sp} onClick={() => setSpeed(sp)} className={`rounded px-2.5 py-1 text-xs font-semibold ${speed === sp ? "bg-[#F97316] text-white" : "text-slate-300 hover:text-white"}`}>{sp}×</button>))}
+               </div>
+             </div>
+           </div>
+ 
+-          {/* live metrics */}
+           <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+             <Metric icon={<Layers className="h-4 w-4" />} label="Sqft verified" value={num(sqftDone)} sub={`of ${num(cfg.sqft)}`} />
+             <Metric icon={<Gauge className="h-4 w-4" />} label="Quality (modelled)" value={quality > 0 ? `${num(quality, 1)}%` : "—"} tone="good" />
+@@ -251,17 +229,11 @@ export default function FleetSimulator() {
+             <Metric icon={<Zap className="h-4 w-4" />} label="Progress" value={`${num(progress * 100)}%`} />
+           </div>
+ 
+-          {/* ROI report (revealed on completion) */}
+           {done && (
+             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-6">
+               <div className="flex items-center justify-between">
+-                <div className="flex items-center gap-2">
+-                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+-                  <h3 className="text-lg font-bold text-slate-900">Projected job summary</h3>
+-                </div>
+-                <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg bg-[#0F172A] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1E293B] print:hidden">
+-                  <Printer className="h-4 w-4" /> Print / save summary
+-                </button>
++                <div className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600" /><h3 className="text-lg font-bold text-slate-900">Projected job summary</h3></div>
++                <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg bg-[#0F172A] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1E293B] print:hidden"><Printer className="h-4 w-4" /> Print / save summary</button>
+               </div>
+               <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-4">
+                 <Report label="Schedule" value={`${num(plan.robotDays, 1)} days`} sub={`vs ${num(plan.manualDays, 1)} manual`} />
+@@ -271,11 +243,9 @@ export default function FleetSimulator() {
+               </div>
+               <div className="mt-5 rounded-xl bg-white p-4 text-sm">
+                 <p className="font-semibold text-slate-900">Recommended RaaS package</p>
+-                <p className="mt-1 text-slate-600">
+-                  Finishing-first deployment at {money(cfg.raasRate)}/sqft ({money(plan.raasCost)} for this job), {plan.operatorsNeeded} operator{plan.operatorsNeeded > 1 ? "s" : ""} at {cfg.supervisionRatio}:1 supervision, with the AMR and QA modules staged as they reach pilot readiness.
+-                </p>
+-                <p className="mt-2 text-slate-600"><span className="font-semibold text-slate-900">SaaS integration:</span> live quality dashboard, per-sqft ROI export, and Procore/Autodesk sync (planned) so the GC sees the same numbers you do.</p>
+-                <p className="mt-3 text-[11px] italic text-slate-400">These are modelled planning figures with disclosed assumptions — not measured results or a quote. DryForge is pre-launch and recruiting GTA pilots.</p>
++                <p className="mt-1 text-slate-600">Finishing-first deployment at {money(cfg.raasRate)}/sqft ({money(plan.raasCost)} for this job), {plan.operatorsNeeded} operator{plan.operatorsNeeded > 1 ? "s" : ""} at {cfg.supervisionRatio}:1 supervision, with AMR and QA modules staged as they reach pilot readiness.</p>
++                <p className="mt-2 text-slate-600"><span className="font-semibold text-slate-900">SaaS integration:</span> live quality dashboard, per-sqft ROI export, and Procore/Autodesk sync (planned).</p>
++                <p className="mt-3 text-[11px] italic text-slate-400">Modelled planning figures with disclosed assumptions — not measured results or a quote. DryForge is pre-launch and recruiting GTA pilots.</p>
+               </div>
+               <div className="mt-4 flex flex-col gap-3 sm:flex-row print:hidden">
+                 <a href="mailto:pilot@dryforge.ai?subject=Founding%20pilot%20%E2%80%94%20fleet%20simulator" className="flex-1 rounded-lg bg-[#F97316] px-4 py-3 text-center text-sm font-semibold text-white hover:bg-[#EA580C]">Apply for a GTA pilot</a>
+@@ -286,9 +256,7 @@ export default function FleetSimulator() {
+ 
+           <details className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 print:hidden">
+             <summary className="flex cursor-pointer items-center gap-2 font-medium text-slate-800"><Info className="h-4 w-4 text-[#F97316]" /> Model assumptions</summary>
+-            <ul className="mt-3 list-disc space-y-1.5 pl-5">
+-              {MODEL_ASSUMPTIONS.map((a, i) => <li key={i}>{a}</li>)}
+-            </ul>
++            <ul className="mt-3 list-disc space-y-1.5 pl-5">{MODEL_ASSUMPTIONS.map((a, i) => <li key={i}>{a}</li>)}</ul>
+           </details>
+         </div>
+       </div>
+@@ -296,46 +264,16 @@ export default function FleetSimulator() {
+   );
+ }
+ 
+-/* --- widgets --- */
+ function Metric({ icon, label, value, sub, tone = "default" }: { icon: React.ReactNode; label: string; value: string; sub?: string; tone?: "default" | "good" }) {
+   const color = tone === "good" ? "text-emerald-600" : "text-slate-900";
+-  return (
+-    <div className="rounded-xl border border-slate-200 bg-white p-4">
+-      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-slate-400">{icon}{label}</div>
+-      <div className={`mt-1 font-mono text-lg font-bold ${color}`}>{value}</div>
+-      {sub && <div className="text-[11px] text-slate-400">{sub}</div>}
+-    </div>
+-  );
++  return (<div className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-slate-400">{icon}{label}</div><div className={`mt-1 font-mono text-lg font-bold ${color}`}>{value}</div>{sub && <div className="text-[11px] text-slate-400">{sub}</div>}</div>);
+ }
+ function Report({ label, value, sub }: { label: string; value: string; sub?: string }) {
+-  return (
+-    <div>
+-      <div className="text-[11px] uppercase tracking-wide text-slate-500">{label}</div>
+-      <div className="mt-0.5 text-lg font-bold text-slate-900">{value}</div>
+-      {sub && <div className="text-[11px] text-slate-500">{sub}</div>}
+-    </div>
+-  );
++  return (<div><div className="text-[11px] uppercase tracking-wide text-slate-500">{label}</div><div className="mt-0.5 text-lg font-bold text-slate-900">{value}</div>{sub && <div className="text-[11px] text-slate-500">{sub}</div>}</div>);
+ }
+ function Slider({ label, value, min, max, step, display, onChange }: { label: string; value: number; min: number; max: number; step: number; display: string; onChange: (v: number) => void }) {
+-  return (
+-    <div>
+-      <div className="mb-1 flex items-center justify-between">
+-        <label className="text-xs font-medium text-slate-500">{label}</label>
+-        <span className="font-mono text-xs font-semibold text-slate-900">{display}</span>
+-      </div>
+-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(parseFloat(e.target.value))} className="w-full accent-[#F97316]" aria-label={label} />
+-    </div>
+-  );
++  return (<div><div className="mb-1 flex items-center justify-between"><label className="text-xs font-medium text-slate-500">{label}</label><span className="font-mono text-xs font-semibold text-slate-900">{display}</span></div><input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(parseFloat(e.target.value))} className="w-full accent-[#F97316]" aria-label={label} /></div>);
+ }
+ function Choice({ label, value, options, onChange }: { label: string; value: string; options: [string, string][]; onChange: (v: string) => void }) {
+-  return (
+-    <div>
+-      <label className="mb-1 block text-xs font-medium text-slate-500">{label}</label>
+-      <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0,1fr))` }}>
+-        {options.map(([val, lbl]) => (
+-          <button key={val} onClick={() => onChange(val)} className={`rounded-md border py-1.5 text-xs font-semibold transition-colors ${value === val ? "border-[#F97316] bg-orange-50 text-[#EA580C]" : "border-slate-200 text-slate-600 hover:border-slate-300"}`}>{lbl}</button>
+-        ))}
+-      </div>
+-    </div>
+-  );
++  return (<div><label className="mb-1 block text-xs font-medium text-slate-500">{label}</label><div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0,1fr))` }}>{options.map(([val, lbl]) => (<button key={val} onClick={() => onChange(val)} className={`rounded-md border py-1.5 text-xs font-semibold transition-colors ${value === val ? "border-[#F97316] bg-orange-50 text-[#EA580C]" : "border-slate-200 text-slate-600 hover:border-slate-300"}`}>{lbl}</button>))}</div></div>);
+ }
