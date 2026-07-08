@@ -1,0 +1,37 @@
+diff --git a/app/robots-demo/RobotShowcase.tsx b/app/robots-demo/RobotShowcase.tsx
+index 84fad99..270a0e1 100644
+--- a/app/robots-demo/RobotShowcase.tsx
++++ b/app/robots-demo/RobotShowcase.tsx
+@@ -8,8 +8,10 @@ import {
+   ArrowRight, Cpu, ShieldCheck, Activity, Wrench, Boxes, Info, Play, Pause, RotateCcw,
+   CheckCircle2, Sparkles, SlidersHorizontal,
+ } from "lucide-react";
++import Link from "next/link";
+ import RobotModel from "../components/robots3d/DrywallRobots";
+ import { Lights, Floor } from "../components/robots3d/Env";
++import LaunchProSimulator from "../components/LaunchProSimulator";
+ import { FinishWall, HangWall, CutOpening, DeliveryZone, QAWall } from "./scene/Workpieces";
+ import {
+   JOBS, defaultKnobs, jobDuration, phaseAt, outcome,
+@@ -132,6 +134,21 @@ export default function RobotWorkstation() {
+         ))}
+       </div>
+ 
++      {/* ---- inspection + Pro Simulator CTA ---- */}
++      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
++        <div className="text-sm text-slate-600">
++          Want to see inside the machine? Inspect every gear, motor and switch —
++          <span className="ml-1 text-slate-400">concept model</span>.
++        </div>
++        <div className="flex items-center gap-2">
++          <Link href="/robots-demo/inspect"
++            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:border-slate-400">
++            <Boxes className="h-4 w-4" /> Open mechanical inspection
++          </Link>
++          <LaunchProSimulator robot={activeId} compact />
++        </div>
++      </div>
++
+       <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-[1.35fr_1fr]">
+         {/* ---- 3D workstation ---- */}
+         <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-[#0b1220] aspect-[4/3] lg:aspect-auto lg:h-[560px]"

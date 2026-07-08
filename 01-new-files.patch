@@ -1,0 +1,1116 @@
+diff --git a/app/components/LaunchProSimulator.tsx b/app/components/LaunchProSimulator.tsx
+new file mode 100644
+index 0000000..3471905
+--- /dev/null
++++ b/app/components/LaunchProSimulator.tsx
+@@ -0,0 +1,94 @@
++"use client";
++
++/**
++ * LaunchProSimulator — upsell entry point to the high-fidelity Godot 4 sim.
++ *
++ * Config via env (set in Vercel):
++ *   NEXT_PUBLIC_PRO_SIM_URL          -> hosted Godot HTML5 export (index.html)
++ *   NEXT_PUBLIC_PRO_SIM_DESKTOP_URL  -> desktop build download (zip / installer)
++ *
++ * If NEXT_PUBLIC_PRO_SIM_URL is unset, the button renders a truthful
++ * "in development" state instead of a broken iframe — no fake capability.
++ */
++
++import { useState } from "react";
++import { X, Cpu, Download, Sparkles } from "lucide-react";
++
++const WEB_URL = process.env.NEXT_PUBLIC_PRO_SIM_URL ?? "";
++const DESKTOP_URL = process.env.NEXT_PUBLIC_PRO_SIM_DESKTOP_URL ?? "";
++
++export default function LaunchProSimulator({
++  robot = "finisher",
++  compact = false,
++}: { robot?: string; compact?: boolean }) {
++  const [open, setOpen] = useState(false);
++  const ready = WEB_URL.length > 0;
++
++  return (
++    <>
++      <button
++        onClick={() => setOpen(true)}
++        className={
++          compact
++            ? "inline-flex items-center gap-2 rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-400"
++            : "inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-amber-500/20 hover:from-amber-400 hover:to-orange-400"
++        }
++      >
++        <Cpu className="h-4 w-4" />
++        Launch High-Fidelity Pro Simulator
++        <Sparkles className="h-4 w-4" />
++      </button>
++
++      {open && (
++        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true">
++          <div className="relative flex h-[85vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-950">
++            <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
++              <div className="flex items-center gap-2 text-slate-100">
++                <Cpu className="h-4 w-4 text-amber-400" />
++                <span className="font-semibold">Pro Simulator</span>
++                <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300">
++                  concept build
++                </span>
++              </div>
++              <div className="flex items-center gap-2">
++                {DESKTOP_URL && (
++                  <a href={DESKTOP_URL} className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 px-2.5 py-1.5 text-xs text-slate-200 hover:border-amber-500">
++                    <Download className="h-3.5 w-3.5" /> Desktop build
++                  </a>
++                )}
++                <button onClick={() => setOpen(false)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white" aria-label="Close">
++                  <X className="h-4 w-4" />
++                </button>
++              </div>
++            </div>
++
++            <div className="relative flex-1 bg-black">
++              {ready ? (
++                <iframe
++                  title="DryForge Pro Simulator"
++                  src={`${WEB_URL}${WEB_URL.includes("?") ? "&" : "?"}robot=${encodeURIComponent(robot)}`}
++                  className="h-full w-full"
++                  allow="cross-origin-isolated; fullscreen"
++                  allowFullScreen
++                />
++              ) : (
++                <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
++                  <Cpu className="h-10 w-10 text-amber-400" />
++                  <h3 className="text-lg font-semibold text-slate-100">Pro Simulator is in active development</h3>
++                  <p className="max-w-md text-sm text-slate-400">
++                    The engineering-grade Godot build (full mechanical internals, physics-based
++                    task paths, exportable inspection sessions) isn&apos;t wired up yet. The web
++                    inspection view on this page is the live preview.
++                  </p>
++                  <a href="/pricing" className="mt-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-400">
++                    Get notified / request pilot access
++                  </a>
++                </div>
++              )}
++            </div>
++          </div>
++        </div>
++      )}
++    </>
++  );
++}
+diff --git a/app/robots-demo/inspect/page.tsx b/app/robots-demo/inspect/page.tsx
+new file mode 100644
+index 0000000..663f238
+--- /dev/null
++++ b/app/robots-demo/inspect/page.tsx
+@@ -0,0 +1,124 @@
++"use client";
++
++import { useRef, useState, type ComponentRef } from "react";
++import { Canvas } from "@react-three/fiber";
++import { OrbitControls, ContactShadows, Grid } from "@react-three/drei";
++import RobotInternals from "../scene/RobotInternals";
++import LaunchProSimulator from "../../components/LaunchProSimulator";
++
++type OrbitControlsRef = ComponentRef<typeof OrbitControls>;
++
++type Preset = { name: string; pos: [number, number, number]; target: [number, number, number] };
++const PRESETS: Preset[] = [
++  { name: "3/4 view", pos: [2.8, 1.9, 3.0], target: [0, 0.9, 0.2] },
++  { name: "Side", pos: [4.0, 1.1, 0.0], target: [0, 1.0, 0.2] },
++  { name: "Top", pos: [0.01, 4.2, 0.6], target: [0, 0.9, 0.2] },
++  { name: "Tool head", pos: [0.9, 1.2, 1.9], target: [0, 1.15, 0.5] },
++];
++
++export default function InspectPage() {
++  const controls = useRef<OrbitControlsRef | null>(null);
++  const [explode, setExplode] = useState(0);
++  const [cutaway, setCutaway] = useState(false);
++  const [clipZ, setClipZ] = useState(0.1);
++  const [labels, setLabels] = useState(true);
++  const [running, setRunning] = useState(true);
++
++  function applyPreset(p: Preset) {
++    const c = controls.current;
++    if (!c) return;
++    c.object.position.set(...p.pos);
++    c.target.set(...p.target);
++    c.update();
++  }
++
++  return (
++    <main className="min-h-screen bg-slate-950 text-slate-100">
++      <div className="mx-auto max-w-7xl px-4 py-6">
++        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
++          <div>
++            <h1 className="text-xl font-semibold">Finisher — Mechanical Inspection</h1>
++            <p className="text-sm text-slate-400">
++              Explore the internals: explode, cut away, and spin the drivetrain.
++            </p>
++          </div>
++          <span
++            title="Illustrative design-intent model. Not a measured digital twin of built hardware."
++            className="rounded-full border border-amber-500/50 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-300"
++          >
++            Concept model · illustrative specs
++          </span>
++        </div>
++
++        <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
++          {/* Viewport */}
++          <div className="relative h-[62vh] min-h-[420px] overflow-hidden rounded-2xl border border-slate-800 bg-[#0b1220]">
++            <Canvas shadows camera={{ position: [2.8, 1.9, 3.0], fov: 42 }} dpr={[1, 1.9]}>
++              <ambientLight intensity={0.25} />
++              <directionalLight position={[4, 6, 3]} intensity={1.6} castShadow shadow-mapSize={[2048, 2048]} />
++              <RobotInternals
++                explode={explode}
++                cutaway={cutaway}
++                clipZ={clipZ}
++                labels={labels}
++                running={running}
++              />
++              <Grid args={[16, 16]} position={[0, 0, 0]} cellColor="#1e293b" sectionColor="#334155" fadeDistance={22} infiniteGrid />
++              <ContactShadows position={[0, 0.005, 0]} opacity={0.55} scale={10} blur={2.4} far={4} />
++              <OrbitControls ref={controls} enableDamping minDistance={1.4} maxDistance={9} target={[0, 0.9, 0.2]} />
++            </Canvas>
++
++            <div className="pointer-events-none absolute bottom-3 left-3 flex gap-2">
++              {PRESETS.map((p) => (
++                <button
++                  key={p.name}
++                  onClick={() => applyPreset(p)}
++                  className="pointer-events-auto rounded-md border border-slate-700 bg-slate-900/80 px-2.5 py-1 text-xs text-slate-200 hover:border-amber-500"
++                >
++                  {p.name}
++                </button>
++              ))}
++            </div>
++          </div>
++
++          {/* Controls */}
++          <aside className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
++            <div>
++              <label className="flex items-center justify-between text-sm font-medium">
++                Exploded view <span className="text-slate-400">{Math.round(explode * 100)}%</span>
++              </label>
++              <input type="range" min={0} max={1} step={0.01} value={explode}
++                onChange={(e) => setExplode(parseFloat(e.target.value))} className="mt-2 w-full accent-amber-500" />
++            </div>
++
++            <div>
++              <label className="flex items-center justify-between text-sm font-medium">
++                <span>Cutaway</span>
++                <input type="checkbox" checked={cutaway} onChange={(e) => setCutaway(e.target.checked)} className="accent-amber-500" />
++              </label>
++              <input type="range" min={-0.4} max={0.6} step={0.01} value={clipZ} disabled={!cutaway}
++                onChange={(e) => setClipZ(parseFloat(e.target.value))}
++                className="mt-2 w-full accent-amber-500 disabled:opacity-40" />
++              <p className="mt-1 text-xs text-slate-500">Slide the section plane through the tool head.</p>
++            </div>
++
++            <label className="flex items-center justify-between text-sm font-medium">
++              <span>Component labels</span>
++              <input type="checkbox" checked={labels} onChange={(e) => setLabels(e.target.checked)} className="accent-amber-500" />
++            </label>
++
++            <label className="flex items-center justify-between text-sm font-medium">
++              <span>Run drivetrain</span>
++              <input type="checkbox" checked={running} onChange={(e) => setRunning(e.target.checked)} className="accent-amber-500" />
++            </label>
++
++            <div className="mt-2 border-t border-slate-800 pt-4">
++              <p className="mb-2 text-xs uppercase tracking-wide text-slate-500">Want engineering-grade fidelity?</p>
++              <LaunchProSimulator robot="finisher" />
++            </div>
++          </aside>
++        </div>
++      </div>
++    </main>
++  );
++}
+diff --git a/app/robots-demo/scene/RobotInternals.tsx b/app/robots-demo/scene/RobotInternals.tsx
+new file mode 100644
+index 0000000..2186a5b
+--- /dev/null
++++ b/app/robots-demo/scene/RobotInternals.tsx
+@@ -0,0 +1,366 @@
++"use client";
++
++/**
++ * RobotInternals — high-visibility inspection view for the DryForge "Finisher".
++ *
++ * IMPORTANT (product-honesty): this is a CONCEPT / design-intent representation.
++ * DryForge has no deployed hardware, so dimensions, part counts and RPM figures
++ * below are illustrative engineering targets, NOT measured values from a built
++ * machine. Keep the on-screen "Concept" badge (see inspect/page.tsx) intact.
++ *
++ * Features:
++ *  - PBR materials + image-based lighting (drei <Environment/>)
++ *  - Exploded view: every sub-assembly separates along a signed axis by `explode`
++ *  - Cutaway: real world-space clipping plane on the housing shells (`cutaway`,`clipZ`)
++ *  - Labels: drei <Html/> callouts per component with concept spec + live RPM
++ *  - Animated internals: sander disc, cooling fan, joint gearbox output spin when `running`
++ */
++
++import { useMemo, useRef } from "react";
++import { useFrame, useThree } from "@react-three/fiber";
++import { Environment, Html } from "@react-three/drei";
++import * as THREE from "three";
++
++/* ------------------------------- config ---------------------------------- */
++
++export interface InternalsProps {
++  explode: number;   // 0..1
++  cutaway: boolean;
++  clipZ: number;     // world Z of the cutting plane
++  labels: boolean;
++  running: boolean;
++}
++
++/** Concept spec targets — illustrative, not measured. Surfaced in labels. */
++const RPM = { sander: 2800, fan: 3600, jointOut: 18 } as const;
++
++const MAT = {
++  housing: { color: "#c9d2dd", metalness: 0.35, roughness: 0.42 },
++  darkHousing: { color: "#2a3444", metalness: 0.5, roughness: 0.5 },
++  steel: { color: "#aab3c0", metalness: 0.9, roughness: 0.28 },
++  brass: { color: "#c8a24a", metalness: 0.95, roughness: 0.32 },
++  copper: { color: "#b56a41", metalness: 0.95, roughness: 0.35 },
++  rubber: { color: "#12161d", metalness: 0.0, roughness: 0.95 },
++  pcb: { color: "#0f5132", metalness: 0.2, roughness: 0.6 },
++  battery: { color: "#1f6feb", metalness: 0.3, roughness: 0.5 },
++  eStop: { color: "#e11d2e", metalness: 0.2, roughness: 0.5 },
++  accent: { color: "#f59e0b", metalness: 0.4, roughness: 0.4 },
++} as const;
++
++/* ----------------------------- primitives -------------------------------- */
++
++/** Enable local clipping once. */
++function ClippingSetup() {
++  const gl = useThree((s) => s.gl);
++  gl.localClippingEnabled = true;
++  return null;
++}
++
++/** A procedural spur gear (illustrative): hub + teeth ring. */
++function Gear({
++  teeth = 16,
++  radius = 0.12,
++  thickness = 0.04,
++  ...mat
++}: { teeth?: number; radius?: number; thickness?: number } & Partial<typeof MAT.steel>) {
++  const positions = useMemo(
++    () =>
++      Array.from({ length: teeth }, (_, i) => {
++        const a = (i / teeth) * Math.PI * 2;
++        return [Math.cos(a) * radius, 0, Math.sin(a) * radius, a] as const;
++      }),
++    [teeth, radius],
++  );
++  return (
++    <group>
++      <mesh castShadow>
++        <cylinderGeometry args={[radius, radius, thickness, teeth * 2]} />
++        <meshStandardMaterial {...MAT.steel} {...mat} />
++      </mesh>
++      <mesh>
++        <cylinderGeometry args={[radius * 0.28, radius * 0.28, thickness * 1.4, 20]} />
++        <meshStandardMaterial {...MAT.brass} />
++      </mesh>
++      {positions.map(([x, , z, a], i) => (
++        <mesh key={i} position={[x, 0, z]} rotation={[0, -a, 0]} castShadow>
++          <boxGeometry args={[radius * 0.16, thickness, radius * 0.34]} />
++          <meshStandardMaterial {...MAT.steel} {...mat} />
++        </mesh>
++      ))}
++    </group>
++  );
++}
++
++/** Label callout that only mounts when labels are on. */
++function Tag({
++  position,
++  title,
++  sub,
++}: { position: [number, number, number]; title: string; sub?: string }) {
++  return (
++    <Html position={position} center distanceFactor={6} zIndexRange={[10, 0]} occlude={false}>
++      <div
++        style={{
++          transform: "translate(14px,-50%)",
++          whiteSpace: "nowrap",
++          fontFamily: "ui-sans-serif, system-ui",
++          fontSize: 11,
++          lineHeight: 1.15,
++          background: "rgba(9,14,22,0.9)",
++          color: "#e6edf5",
++          border: "1px solid rgba(245,158,11,0.5)",
++          borderRadius: 6,
++          padding: "4px 7px",
++          boxShadow: "0 4px 14px rgba(0,0,0,0.4)",
++          pointerEvents: "none",
++        }}
++      >
++        <div style={{ fontWeight: 600 }}>{title}</div>
++        {sub && <div style={{ opacity: 0.7, fontSize: 10 }}>{sub}</div>}
++      </div>
++    </Html>
++  );
++}
++
++/* --------------------------- sub-assemblies ------------------------------ */
++/* Each returns a <group>; `off` is the exploded offset applied by the parent. */
++
++function useSpin(rpm: number, running: boolean) {
++  const ref = useRef<THREE.Group>(null);
++  const radPerSec = (rpm * Math.PI * 2) / 60;
++  useFrame((_, dt) => {
++    if (ref.current && running) ref.current.rotation.y += radPerSec * dt;
++  });
++  return ref;
++}
++
++function TrackedChassis({ clip }: { clip: THREE.Plane[] }) {
++  return (
++    <group>
++      <mesh castShadow position={[0, 0.22, 0]}>
++        <boxGeometry args={[0.9, 0.22, 0.66]} />
++        <meshStandardMaterial {...MAT.housing} clippingPlanes={clip} clipShadows />
++      </mesh>
++      {[-0.5, 0.5].map((x, i) => (
++        <mesh key={i} castShadow position={[x, 0.12, 0]}>
++          <boxGeometry args={[0.09, 0.18, 0.72]} />
++          <meshStandardMaterial {...MAT.rubber} />
++        </mesh>
++      ))}
++      {[-0.5, 0.5].map((x) =>
++        [-0.28, 0.28].map((z, j) => (
++          <mesh key={`${x}-${j}`} position={[x, 0.1, z]} rotation={[0, 0, Math.PI / 2]}>
++            <cylinderGeometry args={[0.08, 0.08, 0.1, 18]} />
++            <meshStandardMaterial {...MAT.steel} />
++          </mesh>
++        )),
++      )}
++    </group>
++  );
++}
++
++function ComputeAndPower({ clip, labels }: { clip: THREE.Plane[]; labels: boolean }) {
++  return (
++    <group>
++      {/* battery pack */}
++      <mesh castShadow position={[0, 0, 0.12]}>
++        <boxGeometry args={[0.5, 0.14, 0.3]} />
++        <meshStandardMaterial {...MAT.battery} clippingPlanes={clip} />
++      </mesh>
++      {/* compute box */}
++      <mesh castShadow position={[0, 0, -0.16]}>
++        <boxGeometry args={[0.34, 0.12, 0.22]} />
++        <meshStandardMaterial {...MAT.darkHousing} clippingPlanes={clip} />
++      </mesh>
++      {/* PCB peeking out */}
++      <mesh position={[0, 0.02, -0.16]}>
++        <boxGeometry args={[0.3, 0.01, 0.18]} />
++        <meshStandardMaterial {...MAT.pcb} />
++      </mesh>
++      {labels && <Tag position={[0.26, 0.08, 0.12]} title="Battery pack" sub="concept · LFP, hot-swap" />}
++      {labels && <Tag position={[-0.24, 0.08, -0.16]} title="Compute / SLAM" sub="concept · edge AI" />}
++    </group>
++  );
++}
++
++function CoolingFan({ running, labels }: { running: boolean; labels: boolean }) {
++  const fan = useSpin(RPM.fan, running);
++  return (
++    <group position={[0.3, 0, -0.16]}>
++      <mesh>
++        <torusGeometry args={[0.07, 0.012, 8, 24]} />
++        <meshStandardMaterial {...MAT.darkHousing} />
++      </mesh>
++      <group ref={fan}>
++        {Array.from({ length: 7 }, (_, i) => {
++          const a = (i / 7) * Math.PI * 2;
++          return (
++            <mesh key={i} position={[Math.cos(a) * 0.035, 0, Math.sin(a) * 0.035]} rotation={[0, -a, 0.5]}>
++              <boxGeometry args={[0.05, 0.004, 0.022]} />
++              <meshStandardMaterial {...MAT.steel} />
++            </mesh>
++          );
++        })}
++      </group>
++      {labels && <Tag position={[0.3, 0.05, -0.16]} title="Cooling fan" sub={`concept · ~${RPM.fan} rpm`} />}
++    </group>
++  );
++}
++
++function LiftColumn({ clip }: { clip: THREE.Plane[] }) {
++  return (
++    <group position={[0, 0.7, -0.1]}>
++      <mesh castShadow>
++        <boxGeometry args={[0.16, 0.9, 0.16]} />
++        <meshStandardMaterial {...MAT.housing} clippingPlanes={clip} />
++      </mesh>
++      {/* ball screw */}
++      <mesh position={[0, 0, 0]}>
++        <cylinderGeometry args={[0.022, 0.022, 0.86, 16]} />
++        <meshStandardMaterial {...MAT.steel} />
++      </mesh>
++      {/* linear rails */}
++      {[-0.06, 0.06].map((x, i) => (
++        <mesh key={i} position={[x, 0, 0.07]}>
++          <boxGeometry args={[0.02, 0.86, 0.02]} />
++          <meshStandardMaterial {...MAT.steel} />
++        </mesh>
++      ))}
++    </group>
++  );
++}
++
++/** Servo joint = motor rotor + planetary/spur gear stack. */
++function ServoJoint({ running, labels, tag }: { running: boolean; labels: boolean; tag: string }) {
++  const out = useSpin(RPM.jointOut, running);
++  return (
++    <group>
++      {/* motor housing */}
++      <mesh castShadow rotation={[Math.PI / 2, 0, 0]}>
++        <cylinderGeometry args={[0.09, 0.09, 0.16, 24]} />
++        <meshStandardMaterial {...MAT.darkHousing} />
++      </mesh>
++      {/* copper stator windings hint */}
++      <mesh rotation={[Math.PI / 2, 0, 0]}>
++        <cylinderGeometry args={[0.07, 0.07, 0.1, 24, 1, true]} />
++        <meshStandardMaterial {...MAT.copper} side={THREE.DoubleSide} />
++      </mesh>
++      {/* gearbox output — spins */}
++      <group ref={out} position={[0, 0, 0.11]}>
++        <Gear teeth={20} radius={0.08} thickness={0.03} />
++      </group>
++      {labels && <Tag position={[0.14, 0.05, 0.11]} title={tag} sub={`concept · harmonic drive · ~${RPM.jointOut} rpm out`} />}
++    </group>
++  );
++}
++
++function EndEffector({ running, labels, clip }: { running: boolean; labels: boolean; clip: THREE.Plane[] }) {
++  const disc = useSpin(RPM.sander, running);
++  return (
++    <group position={[0, 0, 0.34]}>
++      {/* tool head housing (cutaway-able) */}
++      <mesh castShadow>
++        <boxGeometry args={[0.26, 0.2, 0.16]} />
++        <meshStandardMaterial {...MAT.accent} metalness={0.5} roughness={0.4} clippingPlanes={clip} />
++      </mesh>
++      {/* BLDC rotor */}
++      <mesh rotation={[Math.PI / 2, 0, 0]}>
++        <cylinderGeometry args={[0.05, 0.05, 0.1, 24]} />
++        <meshStandardMaterial {...MAT.steel} />
++      </mesh>
++      {/* sanding disc — spins */}
++      <group ref={disc} position={[0, 0, 0.12]}>
++        <mesh castShadow rotation={[Math.PI / 2, 0, 0]}>
++          <cylinderGeometry args={[0.11, 0.11, 0.016, 40]} />
++          <meshStandardMaterial color="#5a4632" roughness={0.98} metalness={0} />
++        </mesh>
++        {Array.from({ length: 6 }, (_, i) => {
++          const a = (i / 6) * Math.PI * 2;
++          return (
++            <mesh key={i} position={[Math.cos(a) * 0.06, 0.01, Math.sin(a) * 0.06]}>
++              <boxGeometry args={[0.01, 0.004, 0.01]} />
++              <meshStandardMaterial color="#3a2d20" />
++            </mesh>
++          );
++        })}
++      </group>
++      {/* mud/tape feed line */}
++      <mesh position={[0.1, 0, -0.1]} rotation={[0.3, 0, 0]}>
++        <cylinderGeometry args={[0.012, 0.012, 0.3, 10]} />
++        <meshStandardMaterial {...MAT.rubber} />
++      </mesh>
++      {labels && <Tag position={[0.16, 0.05, 0.14]} title="Sanding head" sub={`concept · BLDC · ~${RPM.sander} rpm`} />}
++    </group>
++  );
++}
++
++function EStop({ labels }: { labels: boolean }) {
++  return (
++    <group position={[0.34, 0.34, 0.2]}>
++      <mesh castShadow>
++        <cylinderGeometry args={[0.05, 0.05, 0.03, 24]} />
++        <meshStandardMaterial color="#f5c518" roughness={0.6} />
++      </mesh>
++      <mesh position={[0, 0.02, 0]}>
++        <cylinderGeometry args={[0.035, 0.04, 0.03, 24]} />
++        <meshStandardMaterial {...MAT.eStop} />
++      </mesh>
++      {labels && <Tag position={[0.12, 0.34, 0.2]} title="E-stop" sub="safety switch" />}
++    </group>
++  );
++}
++
++/* ------------------------------- root ------------------------------------ */
++
++export default function RobotInternals({ explode, cutaway, clipZ, labels, running }: InternalsProps) {
++  // Cutaway plane: reveal internals along +Z. Normal points -Z so geometry
++  // in front of the plane (z > clipZ) is discarded.
++  const clip = useMemo<THREE.Plane[]>(
++    () => (cutaway ? [new THREE.Plane(new THREE.Vector3(0, 0, -1), clipZ)] : []),
++    [cutaway, clipZ],
++  );
++
++  const e = explode;
++  return (
++    <group>
++      <ClippingSetup />
++      <Environment preset="warehouse" environmentIntensity={0.7} />
++
++      {/* Base / chassis — anchored, others explode relative to it */}
++      <group position={[0, 0, 0]}>
++        <TrackedChassis clip={clip} />
++      </group>
++
++      {/* Power + compute drop DOWN out of the chassis */}
++      <group position={[0, 0.24 - e * 0.7, 0]}>
++        <ComputeAndPower clip={clip} labels={labels} />
++        <CoolingFan running={running} labels={labels} />
++      </group>
++
++      {/* Lift column rises UP */}
++      <group position={[0, e * 0.5, 0]}>
++        <LiftColumn clip={clip} />
++      </group>
++
++      {/* Shoulder joint pushes +Y */}
++      <group position={[0, 1.15 + e * 0.35, -0.1]}>
++        <ServoJoint running={running} labels={labels} tag="Shoulder servo" />
++      </group>
++
++      {/* Elbow joint pushes forward +Z */}
++      <group position={[0, 1.15, 0.08 + e * 0.45]} rotation={[0, 0, 0]}>
++        <ServoJoint running={running} labels={labels} tag="Elbow servo" />
++      </group>
++
++      {/* End-effector pushes furthest +Z */}
++      <group position={[0, 1.15, 0.08 + e * 1.0]}>
++        <EndEffector running={running} labels={labels} clip={clip} />
++      </group>
++
++      {/* E-stop pops out +X */}
++      <group position={[e * 0.4, 0, 0]}>
++        <EStop labels={labels} />
++      </group>
++    </group>
++  );
++}
+diff --git a/godot-sim/project.godot b/godot-sim/project.godot
+new file mode 100644
+index 0000000..1f6fd5b
+--- /dev/null
++++ b/godot-sim/project.godot
+@@ -0,0 +1,24 @@
++; DryForge Pro Simulator — Godot 4.3+ project
++; Concept / design-intent visualization. Not a validated digital twin.
++
++config_version=5
++
++[application]
++config/name="DryForge Pro Simulator"
++run/main_scene="res://scenes/Main.tscn"
++config/features=PackedStringArray("4.3", "Forward Plus")
++config/icon="res://icon.svg"
++
++[display]
++window/size/viewport_width=1280
++window/size/viewport_height=720
++window/stretch/mode="canvas_items"
++
++[rendering]
++renderer/rendering_method="forward_plus"
++environment/defaults/default_clear_color=Color(0.043, 0.07, 0.125, 1)
++anti_aliasing/quality/msaa_3d=2
++
++[web]
++; enable SharedArrayBuffer headers when hosting the HTML5 export (see integration notes)
++progressive_web_app/enabled=true
+diff --git a/godot-sim/scenes/Main.tscn b/godot-sim/scenes/Main.tscn
+new file mode 100644
+index 0000000..8193518
+--- /dev/null
++++ b/godot-sim/scenes/Main.tscn
+@@ -0,0 +1,6 @@
++[gd_scene load_steps=2 format=3 uid="uid://dryforge_main"]
++
++[ext_resource type="Script" path="res://scripts/Main.gd" id="1"]
++
++[node name="Main" type="Node3D"]
++script = ExtResource("1")
+diff --git a/godot-sim/scripts/CameraRig.gd b/godot-sim/scripts/CameraRig.gd
+new file mode 100644
+index 0000000..0e480de
+--- /dev/null
++++ b/godot-sim/scripts/CameraRig.gd
+@@ -0,0 +1,60 @@
++extends Node3D
++class_name CameraRig
++## Orbit camera (drag to rotate, wheel to zoom) + named presets + cutaway.
++## Cutaway drives a global "section" uniform consumed by section_cut.gdshader
++## on any part you want sliceable.
++
++var target: Vector3 = Vector3(0, 0.9, 0.2)
++var _yaw := 0.6
++var _pitch := 0.4
++var _dist := 3.6
++var _cam: Camera3D
++var _dragging := false
++var _cut := false
++var _cut_z := 0.1
++
++const PRESETS := {
++	"3/4": { "yaw": 0.7, "pitch": 0.45, "dist": 3.6 },
++	"Side": { "yaw": 1.57, "pitch": 0.1, "dist": 4.0 },
++	"Top": { "yaw": 0.0, "pitch": 1.45, "dist": 4.2 },
++	"Tool": { "yaw": 0.4, "pitch": 0.2, "dist": 1.9 },
++}
++
++func _ready() -> void:
++	_cam = Camera3D.new()
++	_cam.fov = 42.0
++	add_child(_cam)
++	_update()
++
++func apply_preset(name: String) -> void:
++	if not PRESETS.has(name):
++		return
++	var p = PRESETS[name]
++	_yaw = p.yaw; _pitch = p.pitch; _dist = p.dist
++	_update()
++
++func set_cutaway(on: bool) -> void:
++	_cut = on
++	# Broadcast to shader-driven parts via a project-wide shader parameter.
++	RenderingServer.global_shader_parameter_set("section_enabled", 1.0 if on else 0.0)
++	RenderingServer.global_shader_parameter_set("section_z", _cut_z)
++
++func _unhandled_input(event: InputEvent) -> void:
++	if event is InputEventMouseButton:
++		if event.button_index == MOUSE_BUTTON_LEFT:
++			_dragging = event.pressed
++		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
++			_dist = max(1.4, _dist - 0.25); _update()
++		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
++			_dist = min(9.0, _dist + 0.25); _update()
++	elif event is InputEventMouseMotion and _dragging:
++		_yaw -= event.relative.x * 0.006
++		_pitch = clamp(_pitch - event.relative.y * 0.006, -1.3, 1.5)
++		_update()
++
++func _update() -> void:
++	var x := _dist * cos(_pitch) * sin(_yaw)
++	var y := _dist * sin(_pitch)
++	var z := _dist * cos(_pitch) * cos(_yaw)
++	_cam.position = target + Vector3(x, y, z)
++	_cam.look_at(target, Vector3.UP)
+diff --git a/godot-sim/scripts/ExplodedView.gd b/godot-sim/scripts/ExplodedView.gd
+new file mode 100644
+index 0000000..ae3ef48
+--- /dev/null
++++ b/godot-sim/scripts/ExplodedView.gd
+@@ -0,0 +1,23 @@
++extends Node
++## Lerps every tagged assembly outward along its explode_dir by `factor`.
++## Reads meta set in RobotRig: "explode_dir", "explode_mag", "home".
++
++@export var rig: Node3D
++var factor: float = 0.0
++var _init := false
++
++func _process(_delta: float) -> void:
++	if rig == null:
++		return
++	for child in rig.get_children():
++		if not child is Node3D:
++			continue
++		if not child.has_meta("explode_dir"):
++			continue
++		if not _init:
++			child.set_meta("home", child.position)
++		var home: Vector3 = child.get_meta("home")
++		var dir: Vector3 = child.get_meta("explode_dir")
++		var mag: float = child.get_meta("explode_mag")
++		child.position = home + dir.normalized() * mag * factor
++	_init = true
+diff --git a/godot-sim/scripts/Main.gd b/godot-sim/scripts/Main.gd
+new file mode 100644
+index 0000000..15017cc
+--- /dev/null
++++ b/godot-sim/scripts/Main.gd
+@@ -0,0 +1,124 @@
++extends Node3D
++## DryForge Pro Simulator — bootstrap.
++## Builds the scene procedurally so the project runs with zero imported assets.
++## Replace RobotRig primitives with imported .glb/.blend meshes when ready.
++
++const RobotRig := preload("res://scripts/RobotRig.gd")
++const CameraRig := preload("res://scripts/CameraRig.gd")
++const ExplodedView := preload("res://scripts/ExplodedView.gd")
++const TaskPath := preload("res://scripts/TaskPath.gd")
++
++var _rig: Node3D
++var _exploded: Node
++var _running := true
++
++func _ready() -> void:
++	_build_environment()
++	_build_lights()
++
++	# Robot
++	_rig = RobotRig.new()
++	add_child(_rig)
++
++	# Camera rig (orbit + presets + section cutaway toggle)
++	var cam := CameraRig.new()
++	cam.target = Vector3(0, 0.9, 0.2)
++	add_child(cam)
++
++	# Exploded-view controller drives every part flagged in RobotRig
++	_exploded = ExplodedView.new()
++	_exploded.rig = _rig
++	add_child(_exploded)
++
++	# Task path: drives the end-effector along a boustrophedon wall pass
++	var task := TaskPath.new()
++	task.end_effector = _rig.get_node("EndEffector")
++	add_child(task)
++
++	_build_ui(cam)
++
++func _build_environment() -> void:
++	var env := Environment.new()
++	env.background_mode = Environment.BG_COLOR
++	env.background_color = Color(0.043, 0.07, 0.125)
++	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
++	env.ambient_light_color = Color(0.6, 0.65, 0.75)
++	env.ambient_light_energy = 0.4
++	env.ssao_enabled = true
++	env.tonemap_mode = Environment.TONE_MAPPER_ACES
++	var we := WorldEnvironment.new()
++	we.environment = env
++	add_child(we)
++
++	var floor := MeshInstance3D.new()
++	var plane := PlaneMesh.new()
++	plane.size = Vector2(14, 14)
++	floor.mesh = plane
++	var m := StandardMaterial3D.new()
++	m.albedo_color = Color(0.09, 0.11, 0.15)
++	m.roughness = 0.9
++	floor.material_override = m
++	add_child(floor)
++
++func _build_lights() -> void:
++	var key := DirectionalLight3D.new()
++	key.rotation_degrees = Vector3(-55, -40, 0)
++	key.light_energy = 1.6
++	key.shadow_enabled = true
++	add_child(key)
++	var fill := OmniLight3D.new()
++	fill.position = Vector3(-3, 2.5, 3)
++	fill.light_energy = 0.5
++	fill.omni_range = 12
++	add_child(fill)
++
++func _build_ui(cam: CameraRig) -> void:
++	var ui := CanvasLayer.new()
++	add_child(ui)
++
++	var panel := VBoxContainer.new()
++	panel.position = Vector2(16, 16)
++	ui.add_child(panel)
++
++	var badge := Label.new()
++	badge.text = "Concept model — illustrative specs, not a validated digital twin"
++	badge.add_theme_color_override("font_color", Color(0.96, 0.62, 0.04))
++	panel.add_child(badge)
++
++	# Exploded slider
++	panel.add_child(_make_label("Exploded view"))
++	var slider := HSlider.new()
++	slider.min_value = 0.0
++	slider.max_value = 1.0
++	slider.step = 0.01
++	slider.custom_minimum_size = Vector2(220, 0)
++	slider.value_changed.connect(func(v): _exploded.factor = v)
++	panel.add_child(slider)
++
++	# Cutaway toggle
++	var cut := CheckButton.new()
++	cut.text = "Cutaway"
++	cut.toggled.connect(func(on): cam.set_cutaway(on))
++	panel.add_child(cut)
++
++	# Run toggle
++	var run := CheckButton.new()
++	run.text = "Run drivetrain"
++	run.button_pressed = true
++	run.toggled.connect(func(on): _rig.set_running(on))
++	panel.add_child(run)
++
++	# Camera presets
++	panel.add_child(_make_label("Views"))
++	var row := HBoxContainer.new()
++	for preset in ["3/4", "Side", "Top", "Tool"]:
++		var b := Button.new()
++		b.text = preset
++		b.pressed.connect(func(): cam.apply_preset(preset))
++		row.add_child(b)
++	panel.add_child(row)
++
++func _make_label(t: String) -> Label:
++	var l := Label.new()
++	l.text = t
++	return l
+diff --git a/godot-sim/scripts/RobotRig.gd b/godot-sim/scripts/RobotRig.gd
+new file mode 100644
+index 0000000..a9a95a9
+--- /dev/null
++++ b/godot-sim/scripts/RobotRig.gd
+@@ -0,0 +1,136 @@
++extends Node3D
++## Procedural DryForge "Finisher" rig.
++## Every inspectable sub-assembly is a Node3D whose metadata carries an
++## "explode_dir" (Vector3) and "explode_mag" (float). ExplodedView reads these.
++## Rotors are tagged with meta "rpm" and spun by Rotor.gd.
++##
++## Swap any _prim(...) block for an imported MeshInstance3D when you have
++## modeled geometry — keep the node names and metadata so controllers still work.
++
++const Rotor := preload("res://scripts/Rotor.gd")
++
++var _running := true
++
++func _ready() -> void:
++	_build()
++
++func set_running(on: bool) -> void:
++	_running = on
++	for r in _rotors():
++		r.running = on
++
++func _rotors() -> Array:
++	var out := []
++	for n in find_children("*", "Node3D", true, false):
++		if n.get_script() == Rotor:
++			out.append(n)
++	return out
++
++# --- assembly -------------------------------------------------------------
++
++func _build() -> void:
++	var chassis := _assembly("Chassis", Vector3.ZERO, 0.0)
++	chassis.add_child(_box(Vector3(0.9, 0.22, 0.66), Vector3(0, 0.22, 0), Color(0.79, 0.82, 0.87)))
++	for x in [-0.5, 0.5]:
++		chassis.add_child(_box(Vector3(0.09, 0.18, 0.72), Vector3(x, 0.12, 0), Color(0.07, 0.09, 0.11)))
++	add_child(chassis)
++
++	var power := _assembly("PowerCompute", Vector3.DOWN, 0.7)
++	power.position = Vector3(0, 0.24, 0)
++	power.add_child(_box(Vector3(0.5, 0.14, 0.3), Vector3(0, 0, 0.12), Color(0.12, 0.44, 0.92)))   # battery
++	power.add_child(_box(Vector3(0.34, 0.12, 0.22), Vector3(0, 0, -0.16), Color(0.16, 0.2, 0.27))) # compute
++	var fan := Rotor.new()
++	fan.name = "CoolingFan"
++	fan.rpm = 3600.0
++	fan.axis = Vector3.FORWARD
++	fan.position = Vector3(0.3, 0, -0.16)
++	fan.add_child(_disc(0.06, 0.01, Color(0.6, 0.66, 0.72)))
++	power.add_child(fan)
++	add_child(power)
++
++	var column := _assembly("LiftColumn", Vector3.UP, 0.5)
++	column.position = Vector3(0, 0.7, -0.1)
++	column.add_child(_box(Vector3(0.16, 0.9, 0.16), Vector3.ZERO, Color(0.79, 0.82, 0.87)))
++	column.add_child(_cyl(0.022, 0.86, Vector3.ZERO, Color(0.66, 0.7, 0.75)))  # ball screw
++	add_child(column)
++
++	var shoulder := _servo_joint("Shoulder", Vector3(0, 1.15, -0.1), Vector3.UP, 0.35)
++	add_child(shoulder)
++
++	var elbow := _servo_joint("Elbow", Vector3(0, 1.15, 0.08), Vector3.BACK, 0.45)
++	add_child(elbow)
++
++	var ee := _assembly("EndEffector", Vector3.BACK, 1.0)
++	ee.position = Vector3(0, 1.15, 0.42)
++	ee.add_child(_box(Vector3(0.26, 0.2, 0.16), Vector3.ZERO, Color(0.96, 0.62, 0.04)))
++	var disc := Rotor.new()
++	disc.name = "SanderDisc"
++	disc.rpm = 2800.0
++	disc.axis = Vector3.FORWARD
++	disc.position = Vector3(0, 0, 0.12)
++	disc.add_child(_disc(0.11, 0.016, Color(0.35, 0.27, 0.19)))
++	ee.add_child(disc)
++	add_child(ee)
++
++	var estop := _assembly("EStop", Vector3.RIGHT, 0.4)
++	estop.position = Vector3(0.34, 0.34, 0.2)
++	estop.add_child(_cyl(0.045, 0.03, Vector3.ZERO, Color(0.88, 0.11, 0.18)))
++	add_child(estop)
++
++func _servo_joint(nm: String, pos: Vector3, dir: Vector3, mag: float) -> Node3D:
++	var a := _assembly(nm, dir, mag)
++	a.position = pos
++	a.add_child(_cyl(0.09, 0.16, Vector3.ZERO, Color(0.16, 0.2, 0.27), Vector3(90, 0, 0)))  # motor housing
++	var out := Rotor.new()
++	out.name = "%sGearOut" % nm
++	out.rpm = 18.0
++	out.axis = Vector3.FORWARD
++	out.position = Vector3(0, 0, 0.11)
++	out.add_child(_gear(20, 0.08, 0.03))
++	a.add_child(out)
++	return a
++
++# --- primitive helpers ----------------------------------------------------
++
++func _assembly(nm: String, dir: Vector3, mag: float) -> Node3D:
++	var n := Node3D.new()
++	n.name = nm
++	n.set_meta("explode_dir", dir)
++	n.set_meta("explode_mag", mag)
++	n.set_meta("home", Vector3.ZERO)  # filled by ExplodedView on first frame
++	return n
++
++func _mat(c: Color, metal := 0.4, rough := 0.45) -> StandardMaterial3D:
++	var m := StandardMaterial3D.new()
++	m.albedo_color = c
++	m.metallic = metal
++	m.roughness = rough
++	return m
++
++func _box(size: Vector3, pos: Vector3, c: Color) -> MeshInstance3D:
++	var mi := MeshInstance3D.new()
++	var b := BoxMesh.new(); b.size = size
++	mi.mesh = b; mi.position = pos; mi.material_override = _mat(c)
++	return mi
++
++func _cyl(r: float, h: float, pos: Vector3, c: Color, rot_deg := Vector3.ZERO) -> MeshInstance3D:
++	var mi := MeshInstance3D.new()
++	var cm := CylinderMesh.new(); cm.top_radius = r; cm.bottom_radius = r; cm.height = h
++	mi.mesh = cm; mi.position = pos; mi.rotation_degrees = rot_deg; mi.material_override = _mat(c, 0.9, 0.3)
++	return mi
++
++func _disc(r: float, h: float, c: Color) -> MeshInstance3D:
++	var mi := _cyl(r, h, Vector3.ZERO, c)
++	mi.rotation_degrees = Vector3(90, 0, 0)
++	return mi
++
++func _gear(teeth: int, radius: float, thickness: float) -> Node3D:
++	var g := Node3D.new()
++	g.add_child(_cyl(radius, thickness, Vector3.ZERO, Color(0.67, 0.7, 0.75), Vector3(90, 0, 0)))
++	for i in teeth:
++		var a := float(i) / teeth * TAU
++		var tooth := _box(Vector3(radius * 0.16, thickness, radius * 0.34),
++			Vector3(cos(a) * radius, 0, sin(a) * radius), Color(0.67, 0.7, 0.75))
++		tooth.rotation.y = -a
++		g.add_child(tooth)
++	return g
+diff --git a/godot-sim/scripts/Rotor.gd b/godot-sim/scripts/Rotor.gd
+new file mode 100644
+index 0000000..eb623ea
+--- /dev/null
++++ b/godot-sim/scripts/Rotor.gd
+@@ -0,0 +1,14 @@
++extends Node3D
++## Spins a node at a configured RPM about a local axis. Attach to gearbox
++## outputs, sander discs, cooling fans. RPM is an illustrative concept target.
++
++@export var rpm: float = 60.0
++@export var axis: Vector3 = Vector3.FORWARD
++var running: bool = true
++
++func _process(delta: float) -> void:
++	if not running:
++		return
++	# rev/min -> rad/s
++	var rad_per_sec := rpm * TAU / 60.0
++	rotate(axis.normalized(), rad_per_sec * delta)
+diff --git a/godot-sim/scripts/TaskPath.gd b/godot-sim/scripts/TaskPath.gd
+new file mode 100644
+index 0000000..6774a6d
+--- /dev/null
++++ b/godot-sim/scripts/TaskPath.gd
+@@ -0,0 +1,43 @@
++extends Node
++## Drives the end-effector node along a boustrophedon (back-and-forth) wall
++## pass — the motion profile a finisher uses for taping/mudding/sanding.
++## Purely kinematic playback; swap for a physics/IK solve when you model joints.
++
++@export var end_effector: Node3D
++@export var wall_width: float = 1.6
++@export var wall_height: float = 1.0
++@export var rows: int = 5
++@export var speed: float = 0.35     ## m/s along the path
++@export var origin: Vector3 = Vector3(0, 0.6, 0.55)
++
++var _points: PackedVector3Array
++var _seg := 0
++var _t := 0.0
++
++func _ready() -> void:
++	_build_path()
++
++func _build_path() -> void:
++	_points = PackedVector3Array()
++	for r in rows:
++		var y := origin.y + (float(r) / max(1, rows - 1)) * wall_height
++		var left := origin + Vector3(-wall_width * 0.5, y - origin.y, 0)
++		var right := origin + Vector3(wall_width * 0.5, y - origin.y, 0)
++		if r % 2 == 0:
++			_points.append(left); _points.append(right)
++		else:
++			_points.append(right); _points.append(left)
++
++func _process(delta: float) -> void:
++	if end_effector == null or _points.size() < 2:
++		return
++	var a := _points[_seg]
++	var b := _points[(_seg + 1) % _points.size()]
++	var seg_len := a.distance_to(b)
++	_t += (speed * delta) / max(0.001, seg_len)
++	if _t >= 1.0:
++		_t = 0.0
++		_seg = (_seg + 1) % _points.size()
++		a = _points[_seg]
++		b = _points[(_seg + 1) % _points.size()]
++	end_effector.position = a.lerp(b, _t)
+diff --git a/godot-sim/shaders/section_cut.gdshader b/godot-sim/shaders/section_cut.gdshader
+new file mode 100644
+index 0000000..f57a81f
+--- /dev/null
++++ b/godot-sim/shaders/section_cut.gdshader
+@@ -0,0 +1,30 @@
++shader_type spatial;
++// Section-cut shader for cutaway inspection. Discards fragments in front of a
++// world-space Z plane when the global "section_enabled" flag is on.
++// Assign as material on any housing you want sliceable, then toggle from CameraRig.
++
++global uniform float section_enabled;
++global uniform float section_z;
++
++uniform vec4 albedo : source_color = vec4(0.79, 0.82, 0.87, 1.0);
++uniform float metallic : hint_range(0.0, 1.0) = 0.4;
++uniform float roughness : hint_range(0.0, 1.0) = 0.45;
++
++varying vec3 world_pos;
++
++void vertex() {
++	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
++}
++
++void fragment() {
++	if (section_enabled > 0.5 && world_pos.z > section_z) {
++		discard;
++	}
++	ALBEDO = albedo.rgb;
++	METALLIC = metallic;
++	ROUGHNESS = roughness;
++	// light the freshly-cut interior faces
++	if (!FRONT_FACING) {
++		ALBEDO *= 0.6;
++	}
++}
