@@ -1,0 +1,628 @@
+diff --git a/app/robots-demo/inspect/page.tsx b/app/robots-demo/inspect/page.tsx
+index a9990b9..25b22a1 100644
+--- a/app/robots-demo/inspect/page.tsx
++++ b/app/robots-demo/inspect/page.tsx
+@@ -1,43 +1,76 @@
+ "use client";
+ 
+-import { useEffect, useRef, useState, type ComponentRef } from "react";
+-import { Canvas } from "@react-three/fiber";
+-import { OrbitControls, ContactShadows, Grid } from "@react-three/drei";
+-import RobotInternals from "../scene/RobotInternals";
++import { useEffect, useRef, useState, type ComponentRef, type MutableRefObject } from "react";
++import { Canvas, useFrame } from "@react-three/fiber";
++import { OrbitControls, ContactShadows } from "@react-three/drei";
++import RobotModel from "../../components/robots3d/DrywallRobots";
++import { Lights, Floor } from "../../components/robots3d/Env";
++import { FinishWall, HangWall, CutOpening, DeliveryZone, QAWall } from "../scene/Workpieces";
+ import LaunchProSimulator from "../../components/LaunchProSimulator";
+ import { ROBOTS, type RobotId } from "../../lib/fleet";
+ 
+ type OrbitControlsRef = ComponentRef<typeof OrbitControls>;
++const VALID = new Set<RobotId>(["finisher", "hanger", "cutter", "amr", "qa"]);
++const SPEEDS = [0.5, 1, 2] as const;
++const LOOP_SECONDS = 10; // one full task pass at 1×
+ 
+ type Preset = { name: string; pos: [number, number, number]; target: [number, number, number] };
+ const PRESETS: Preset[] = [
+-  { name: "3/4 view", pos: [2.8, 1.9, 3.0], target: [0, 0.9, 0.2] },
+-  { name: "Side", pos: [4.0, 1.1, 0.0], target: [0, 1.0, 0.2] },
+-  { name: "Top", pos: [0.01, 4.2, 0.6], target: [0, 0.9, 0.2] },
+-  { name: "Tool head", pos: [0.9, 1.2, 1.9], target: [0, 1.15, 0.5] },
++  { name: "3/4 view", pos: [3.6, 2.7, 4.2], target: [0, 1.1, 0.6] },
++  { name: "Side", pos: [5.2, 1.4, 0.2], target: [0, 1.1, 0.4] },
++  { name: "Top", pos: [0.02, 5.6, 1.0], target: [0, 0.9, 0.4] },
++  { name: "Close", pos: [1.6, 1.6, 2.4], target: [0.3, 1.2, 0.6] },
+ ];
+ 
+-const VALID = new Set<RobotId>(["finisher", "hanger", "cutter", "amr", "qa"]);
++/** Working parts each canonical model actually animates — described, not faked. */
++const PARTS: Record<RobotId, string[]> = {
++  amr: ["Mecanum drive wheels — omnidirectional travel to the drop zone", "Smart-lift deck — raises and releases the sheet stack", "Nav lidar — 360° obstacle scan", "E-stop — safety cut-off"],
++  cutter: ["Gantry carriage — positions the head across the panel", "Routing spindle — high-rpm cut along the BIM path", "Vacuum bed — holds the sheet flat", "Dust shroud — capture at the cut"],
++  hanger: ["Shoulder + elbow servos — reach and place the sheet", "Vacuum plate — picks and holds the drywall", "Fastening head — drives screws on the stud line", "Tracked base — repositions between courses"],
++  finisher: ["Lift mast — steps the head up row by row", "Reach arm — presses the tool to the wall", "Coating / sanding head — tapes, muds, sands", "Dust capture — ~99% at the head"],
++  qa: ["Sensor mast — raises the scanner over the wall", "Vision cluster — camera, LED ring, lidar", "Pan head — sweeps across the surface", "Mobile base — travels the scan course"],
++};
++
++function Workpiece({ id, task, progress }: { id: RobotId; task: string; progress: number }) {
++  if (id === "finisher") return <FinishWall progress={progress} task={task} />;
++  if (id === "hanger") return <HangWall progress={progress} task={task} />;
++  if (id === "cutter") return <CutOpening progress={progress} />;
++  if (id === "amr") return <DeliveryZone progress={progress} />;
++  return <QAWall progress={progress} />;
++}
++
++/** Advances the shared progress ref inside the render loop when running. */
++function Runner({ progressRef, running, speed }: { progressRef: MutableRefObject<number>; running: boolean; speed: number }) {
++  useFrame((_, dt) => {
++    if (running) progressRef.current = (progressRef.current + (dt * speed) / LOOP_SECONDS) % 1;
++  });
++  return null;
++}
+ 
+ export default function InspectPage() {
+   const controls = useRef<OrbitControlsRef | null>(null);
++  const progressRef = useRef(0);
+   const [robot, setRobot] = useState<RobotId>("finisher");
+-  const [explode, setExplode] = useState(0);
+-  const [cutaway, setCutaway] = useState(false);
+-  const [clipZ, setClipZ] = useState(0.1);
+-  const [labels, setLabels] = useState(true);
+   const [running, setRunning] = useState(true);
++  const [speed, setSpeed] = useState<number>(1);
++  const [progress, setProgress] = useState(0); // throttled mirror for workpiece
+ 
+-  // Initialise from ?robot= without needing a Suspense boundary.
+   useEffect(() => {
+     const q = new URLSearchParams(window.location.search).get("robot");
+     if (q && VALID.has(q as RobotId)) setRobot(q as RobotId);
+   }, []);
+ 
++  // mirror ref → state ~15fps so the workpiece animates without per-frame re-render
++  useEffect(() => {
++    const t = setInterval(() => setProgress(progressRef.current), 66);
++    return () => clearInterval(t);
++  }, []);
++
+   const active = ROBOTS.find((r) => r.id === robot) ?? ROBOTS.find((r) => r.id === "finisher")!;
+ 
+   function selectRobot(id: RobotId) {
+     setRobot(id);
++    progressRef.current = 0;
+     const url = new URL(window.location.href);
+     url.searchParams.set("robot", id);
+     window.history.replaceState(null, "", url.toString());
+@@ -57,7 +90,7 @@ export default function InspectPage() {
+         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+           <div>
+             <h1 className="text-xl font-semibold">{active.shortName} — Mechanical Inspection</h1>
+-            <p className="text-sm text-slate-400">{active.name} · explode, cut away, and spin the drivetrain.</p>
++            <p className="text-sm text-slate-400">{active.name} · the same machine as the demo, studied up close while it runs its task.</p>
+           </div>
+           <span
+             title="Illustrative design-intent model. Not a measured digital twin of built hardware."
+@@ -74,11 +107,9 @@ export default function InspectPage() {
+               key={r.id}
+               onClick={() => selectRobot(r.id)}
+               className="rounded-lg border px-3 py-2 text-sm font-semibold transition-colors"
+-              style={
+-                robot === r.id
+-                  ? { backgroundColor: r.accent, borderColor: "transparent", color: "#0b1220" }
+-                  : { borderColor: "#334155", color: "#cbd5e1" }
+-              }
++              style={robot === r.id
++                ? { backgroundColor: r.accent, borderColor: "transparent", color: "#0b1220" }
++                : { borderColor: "#334155", color: "#cbd5e1" }}
+             >
+               {r.shortName}
+             </button>
+@@ -86,25 +117,19 @@ export default function InspectPage() {
+         </div>
+ 
+         <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
+-          <div className="relative h-[62vh] min-h-[420px] overflow-hidden rounded-2xl border border-slate-800 bg-[#0b1220]">
+-            <Canvas shadows camera={{ position: [2.8, 1.9, 3.0], fov: 42 }} dpr={[1, 1.9]}>
+-              <ambientLight intensity={0.25} />
+-              <directionalLight position={[4, 6, 3]} intensity={1.6} castShadow shadow-mapSize={[2048, 2048]} />
+-              <RobotInternals
+-                robot={robot}
+-                accent={active.accent}
+-                explode={explode}
+-                cutaway={cutaway}
+-                clipZ={clipZ}
+-                labels={labels}
+-                running={running}
+-              />
+-              <Grid args={[16, 16]} cellColor="#1e293b" sectionColor="#334155" fadeDistance={22} infiniteGrid />
+-              <ContactShadows position={[0, 0.005, 0]} opacity={0.55} scale={10} blur={2.4} far={4} />
+-              <OrbitControls ref={controls} enableDamping minDistance={1.4} maxDistance={9} target={[0, 0.9, 0.2]} />
++          <div className="relative h-[62vh] min-h-[440px] overflow-hidden rounded-2xl border border-slate-800 bg-[#0b1220]">
++            <Canvas shadows camera={{ position: [3.6, 2.7, 4.2], fov: 42 }} dpr={[1, 1.85]}>
++              <color attach="background" args={["#0b1220"]} />
++              <Lights accent={active.accent} />
++              <Floor size={14} />
++              <Workpiece id={robot} task="" progress={progress} />
++              <RobotModel id={robot} running={running} accent={active.accent} progressRef={progressRef} task="" />
++              <Runner progressRef={progressRef} running={running} speed={speed} />
++              <ContactShadows position={[0, 0.01, 0]} opacity={0.5} scale={12} blur={2.4} far={5} />
++              <OrbitControls ref={controls} enableDamping minDistance={2.2} maxDistance={11} maxPolarAngle={Math.PI / 2.05} target={[0, 1.1, 0.6]} />
+             </Canvas>
+ 
+-            <div className="pointer-events-none absolute bottom-3 left-3 flex gap-2">
++            <div className="pointer-events-none absolute bottom-3 left-3 flex flex-wrap gap-2">
+               {PRESETS.map((p) => (
+                 <button key={p.name} onClick={() => applyPreset(p)}
+                   className="pointer-events-auto rounded-md border border-slate-700 bg-slate-900/80 px-2.5 py-1 text-xs text-slate-200 hover:border-amber-500">
+@@ -112,37 +137,39 @@ export default function InspectPage() {
+                 </button>
+               ))}
+             </div>
+-          </div>
+-
+-          <aside className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+-            <div>
+-              <label className="flex items-center justify-between text-sm font-medium">
+-                Exploded view <span className="text-slate-400">{Math.round(explode * 100)}%</span>
+-              </label>
+-              <input type="range" min={0} max={1} step={0.01} value={explode}
+-                onChange={(e) => setExplode(parseFloat(e.target.value))} className="mt-2 w-full accent-amber-500" />
+-            </div>
+ 
+-            <div>
+-              <label className="flex items-center justify-between text-sm font-medium">
+-                <span>Cutaway</span>
+-                <input type="checkbox" checked={cutaway} onChange={(e) => setCutaway(e.target.checked)} className="accent-amber-500" />
+-              </label>
+-              <input type="range" min={-0.4} max={0.6} step={0.01} value={clipZ} disabled={!cutaway}
+-                onChange={(e) => setClipZ(parseFloat(e.target.value))} className="mt-2 w-full accent-amber-500 disabled:opacity-40" />
+-              <p className="mt-1 text-xs text-slate-500">Slide the section plane through the tool head.</p>
++            {/* speed */}
++            <div className="absolute bottom-3 right-3 flex overflow-hidden rounded-md border border-slate-700">
++              {SPEEDS.map((s) => (
++                <button key={s} onClick={() => setSpeed(s)}
++                  className={`px-2.5 py-1 text-xs ${speed === s ? "bg-amber-500 text-slate-950" : "bg-slate-900/80 text-slate-300 hover:bg-slate-800"}`}>
++                  {s}×
++                </button>
++              ))}
+             </div>
++          </div>
+ 
++          <aside className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+             <label className="flex items-center justify-between text-sm font-medium">
+-              <span>Component labels</span>
+-              <input type="checkbox" checked={labels} onChange={(e) => setLabels(e.target.checked)} className="accent-amber-500" />
+-            </label>
+-
+-            <label className="flex items-center justify-between text-sm font-medium">
+-              <span>Run drivetrain</span>
++              <span>Run task</span>
+               <input type="checkbox" checked={running} onChange={(e) => setRunning(e.target.checked)} className="accent-amber-500" />
+             </label>
+ 
++            <div>
++              <p className="mb-2 text-xs uppercase tracking-wide text-slate-500">Working parts</p>
++              <ul className="space-y-2">
++                {PARTS[robot].map((line, i) => {
++                  const [head, ...rest] = line.split(" — ");
++                  return (
++                    <li key={i} className="text-sm">
++                      <span className="font-medium text-slate-100">{head}</span>
++                      {rest.length > 0 && <span className="text-slate-400"> — {rest.join(" — ")}</span>}
++                    </li>
++                  );
++                })}
++              </ul>
++            </div>
++
+             <div className="mt-2 border-t border-slate-800 pt-4">
+               <p className="mb-2 text-xs uppercase tracking-wide text-slate-500">Want engineering-grade fidelity?</p>
+               <LaunchProSimulator robot={robot} />
+diff --git a/app/robots-demo/scene/RobotInternals.tsx b/app/robots-demo/scene/RobotInternals.tsx
+deleted file mode 100644
+index c8df153..0000000
+--- a/app/robots-demo/scene/RobotInternals.tsx
++++ /dev/null
+@@ -1,402 +0,0 @@
+-"use client";
+-
+-/**
+- * RobotInternals — distinct concept machine per DryForge phase.
+- *
+- * PRODUCT-HONESTY: concept / design-intent models. No hardware is built, so
+- * geometry, dimensions and RPM are illustrative, NOT measured. Keep the
+- * "Concept" badge in inspect/page.tsx.
+- *
+- * Each robot is its OWN body + kinematics, matching its demo-tab form factor:
+- *   amr       mobile 4-wheel cart, drives a payload             (wheels roll)
+- *   cutter    gantry-over-table, X carriage + routing spindle   (~18000 rpm bit)
+- *   hanger    tracked base + arm + vacuum plate lifting a sheet (arm cycles)
+- *   finisher  tracked base + lift mast + arm + sanding head     (sweeps wall)
+- *   qa        compact base + sensor mast, camera/LED/lidar       (scans wall)
+- *
+- * When "Run drivetrain" is on, each performs its task loop; when off, it holds
+- * so you can see which parts move and which are structure.
+- */
+-
+-import { useMemo, useRef, type ReactNode, type MutableRefObject } from "react";
+-import { useFrame, useThree } from "@react-three/fiber";
+-import { Environment, Html, RoundedBox } from "@react-three/drei";
+-import * as THREE from "three";
+-import type { RobotId } from "../../lib/fleet";
+-
+-export interface InternalsProps {
+-  robot: RobotId;
+-  accent: string;
+-  explode: number;
+-  cutaway: boolean;
+-  clipZ: number;
+-  labels: boolean;
+-  running: boolean;
+-}
+-
+-const TAU = Math.PI * 2;
+-/** 0→1→0 triangle over one unit of x. */
+-const pingpong = (x: number) => { const f = x - Math.floor(x); return f < 0.5 ? f * 2 : 2 - f * 2; };
+-
+-const M = {
+-  panel: { color: "#c9d2dd", metalness: 0.45, roughness: 0.38 },
+-  dark: { color: "#28303c", metalness: 0.55, roughness: 0.4 },
+-  steel: { color: "#aeb6c2", metalness: 0.92, roughness: 0.25 },
+-  copper: { color: "#b56a41", metalness: 0.95, roughness: 0.35 },
+-  rubber: { color: "#14181f", metalness: 0.0, roughness: 0.9 },
+-  brass: { color: "#c8a24a", metalness: 0.95, roughness: 0.3 },
+-  battery: { color: "#1f6feb", metalness: 0.3, roughness: 0.5 },
+-  pcb: { color: "#0f5132", metalness: 0.2, roughness: 0.6 },
+-  glass: { color: "#0b1a2a", metalness: 0.1, roughness: 0.08 },
+-  board: { color: "#d8d2c4", metalness: 0.05, roughness: 0.85 },
+-} as const;
+-
+-type Ctx = { e: number; clip: THREE.Plane[]; labels: boolean; running: boolean; t: MutableRefObject<number>; accent: string };
+-
+-/* ------------------------------- helpers --------------------------------- */
+-
+-function Panel({ args, position, rotation, color, clip, radius = 0.025, metalness = 0.45, roughness = 0.4 }:
+-  { args: [number, number, number]; position?: [number, number, number]; rotation?: [number, number, number]; color: string; clip?: THREE.Plane[]; radius?: number; metalness?: number; roughness?: number }) {
+-  return (
+-    <RoundedBox args={args} radius={radius} smoothness={4} position={position} rotation={rotation} castShadow receiveShadow>
+-      <meshStandardMaterial color={color} metalness={metalness} roughness={roughness} clippingPlanes={clip} />
+-    </RoundedBox>
+-  );
+-}
+-
+-function Box({ args, position, rotation, mat, clip }:
+-  { args: [number, number, number]; position?: [number, number, number]; rotation?: [number, number, number]; mat: { color: string; metalness?: number; roughness?: number }; clip?: THREE.Plane[] }) {
+-  return <mesh position={position} rotation={rotation} castShadow receiveShadow><boxGeometry args={args} /><meshStandardMaterial {...mat} clippingPlanes={clip} /></mesh>;
+-}
+-
+-function Cyl({ r, h, position, rotation, mat }:
+-  { r: number; h: number; position?: [number, number, number]; rotation?: [number, number, number]; mat: { color: string; metalness?: number; roughness?: number } }) {
+-  return <mesh position={position} rotation={rotation} castShadow><cylinderGeometry args={[r, r, h, 24]} /><meshStandardMaterial {...mat} /></mesh>;
+-}
+-
+-function Tag({ position, title, sub }: { position: [number, number, number]; title: string; sub?: string }) {
+-  return (
+-    <Html position={position} center distanceFactor={7} zIndexRange={[10, 0]} occlude={false}>
+-      <div style={{
+-        transform: "translate(14px,-50%)", whiteSpace: "nowrap", fontFamily: "ui-sans-serif, system-ui",
+-        fontSize: 11, lineHeight: 1.15, background: "rgba(9,14,22,0.9)", color: "#e6edf5",
+-        border: "1px solid rgba(245,158,11,0.5)", borderRadius: 6, padding: "4px 7px",
+-        boxShadow: "0 4px 14px rgba(0,0,0,0.4)", pointerEvents: "none",
+-      }}>
+-        <div style={{ fontWeight: 600 }}>{title}</div>
+-        {sub && <div style={{ opacity: 0.7, fontSize: 10 }}>{sub}</div>}
+-      </div>
+-    </Html>
+-  );
+-}
+-
+-function Gear({ teeth = 18, radius = 0.08, thickness = 0.03 }: { teeth?: number; radius?: number; thickness?: number }) {
+-  const teethArr = useMemo(() => Array.from({ length: teeth }, (_, i) => (i / teeth) * TAU), [teeth]);
+-  return (
+-    <group>
+-      <mesh castShadow><cylinderGeometry args={[radius, radius, thickness, teeth * 2]} /><meshStandardMaterial {...M.steel} /></mesh>
+-      <mesh><cylinderGeometry args={[radius * 0.3, radius * 0.3, thickness * 1.3, 18]} /><meshStandardMaterial {...M.brass} /></mesh>
+-      {teethArr.map((a, i) => (
+-        <mesh key={i} position={[Math.cos(a) * radius, 0, Math.sin(a) * radius]} rotation={[0, -a, 0]} castShadow>
+-          <boxGeometry args={[radius * 0.16, thickness, radius * 0.34]} /><meshStandardMaterial {...M.steel} />
+-        </mesh>
+-      ))}
+-    </group>
+-  );
+-}
+-
+-/** Motor stub: housing + copper windings + spinning output gear. */
+-function Servo({ running, tag, labels, tagPos }: { running: boolean; tag?: string; labels?: boolean; tagPos?: [number, number, number] }) {
+-  const out = useRef<THREE.Group>(null);
+-  useFrame((_, dt) => { if (out.current && running) out.current.rotation.z += 0.4 * dt; });
+-  return (
+-    <group>
+-      <Cyl r={0.075} h={0.14} rotation={[Math.PI / 2, 0, 0]} mat={M.dark} />
+-      <mesh rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.058, 0.058, 0.09, 24, 1, true]} /><meshStandardMaterial {...M.copper} side={THREE.DoubleSide} /></mesh>
+-      <group ref={out} position={[0, 0, 0.09]}><Gear teeth={18} radius={0.06} thickness={0.024} /></group>
+-      {labels && tag && tagPos && <Tag position={tagPos} title={tag} sub="concept · harmonic drive" />}
+-    </group>
+-  );
+-}
+-
+-function Spinner({ rpm, axis = "z", running, children }: { rpm: number; axis?: "x" | "y" | "z"; running: boolean; children: ReactNode }) {
+-  const ref = useRef<THREE.Group>(null);
+-  const rate = (rpm * TAU) / 60;
+-  useFrame((_, dt) => { if (ref.current && running) ref.current.rotation[axis] += rate * dt; });
+-  return <group ref={ref}>{children}</group>;
+-}
+-
+-function Wheel({ position, r = 0.1, w = 0.06, spin }: { position: [number, number, number]; r?: number; w?: number; spin: MutableRefObject<number> }) {
+-  const ref = useRef<THREE.Group>(null);
+-  useFrame(() => { if (ref.current) ref.current.rotation.x = spin.current; });
+-  return (
+-    <group position={position} ref={ref}>
+-      <mesh rotation={[0, 0, Math.PI / 2]} castShadow><cylinderGeometry args={[r, r, w, 22]} /><meshStandardMaterial {...M.rubber} /></mesh>
+-      <mesh rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[r * 0.42, r * 0.42, w * 1.1, 16]} /><meshStandardMaterial {...M.steel} /></mesh>
+-    </group>
+-  );
+-}
+-
+-function EStop({ position, labels }: { position: [number, number, number]; labels: boolean }) {
+-  return (
+-    <group position={position}>
+-      <Cyl r={0.045} h={0.03} mat={{ color: "#f5c518", roughness: 0.6 }} />
+-      <Cyl r={0.036} h={0.03} position={[0, 0.025, 0]} mat={{ color: "#e11d2e", roughness: 0.5 }} />
+-      {labels && <Tag position={[0.1, 0, 0]} title="E-stop" sub="safety switch" />}
+-    </group>
+-  );
+-}
+-
+-function CorePower({ clip, labels, y = 0 }: { clip: THREE.Plane[]; labels: boolean; y?: number }) {
+-  return (
+-    <group position={[0, y, 0]}>
+-      <Box args={[0.42, 0.12, 0.28]} position={[0, 0, 0.1]} mat={M.battery} clip={clip} />
+-      <Box args={[0.3, 0.1, 0.2]} position={[0, 0, -0.15]} mat={M.dark} clip={clip} />
+-      <Box args={[0.26, 0.008, 0.16]} position={[0, 0.055, -0.15]} mat={M.pcb} />
+-      {labels && <Tag position={[0.24, 0.02, 0.1]} title="Battery" sub="concept · LFP hot-swap" />}
+-      {labels && <Tag position={[-0.22, 0.02, -0.15]} title="Compute" sub="concept · edge AI" />}
+-    </group>
+-  );
+-}
+-
+-/* ================================ AMR ==================================== */
+-/* Mobile material-handling cart. Drives a payload; wheels roll; no arm.       */
+-
+-function AMRUnit({ e, clip, labels, running, t, accent }: Ctx) {
+-  const root = useRef<THREE.Group>(null);
+-  const spin = useRef(0);
+-  useFrame(() => {
+-    const drive = pingpong(t.current / 4);           // 0..1 back-and-forth over 4s
+-    const x = (drive - 0.5) * 1.4;
+-    if (root.current) root.current.position.x = x;
+-    spin.current = (t.current * 3.4) % TAU;           // wheel roll
+-  });
+-  return (
+-    <group ref={root}>
+-      <Panel args={[0.9, 0.16, 0.66]} position={[0, 0.2, 0]} color={accent} clip={clip} />
+-      {/* drive internals revealed on cutaway/explode */}
+-      <group position={[0, 0.2 - e * 0.5, 0]}>
+-        <CorePower clip={clip} labels={labels} />
+-        <Cyl r={0.05} h={0.1} position={[-0.28, 0, 0.2]} rotation={[0, 0, Math.PI / 2]} mat={M.dark} />
+-        <Cyl r={0.05} h={0.1} position={[0.28, 0, 0.2]} rotation={[0, 0, Math.PI / 2]} mat={M.dark} />
+-        {labels && <Tag position={[0, -0.12, 0.24]} title="Drive motors" sub="concept · differential" />}
+-      </group>
+-      {/* wheels */}
+-      {([[-0.42, -0.28], [0.42, -0.28], [-0.42, 0.28], [0.42, 0.28]] as const).map(([x, z], i) => (
+-        <Wheel key={i} position={[x, 0.1, z]} spin={spin} />
+-      ))}
+-      {/* payload: stacked sheets */}
+-      <group position={[0, 0.34 + e * 0.4, 0]}>
+-        {[0, 1, 2].map((i) => <Box key={i} args={[0.72, 0.02, 0.5]} position={[0, i * 0.025, 0]} mat={M.board} />)}
+-        {labels && <Tag position={[0.34, 0.05, 0]} title="Payload deck" sub="concept · 10 sheets" />}
+-      </group>
+-      {/* lidar puck */}
+-      <group position={[0.4, 0.32, 0]}>
+-        <Spinner rpm={600} axis="y" running={running}><Cyl r={0.04} h={0.05} mat={M.dark} /><Box args={[0.02, 0.01, 0.06]} position={[0.03, 0, 0]} mat={M.steel} /></Spinner>
+-        {labels && <Tag position={[0.12, 0, 0]} title="Nav lidar" sub="concept · 360° scan" />}
+-      </group>
+-      <EStop position={[-0.36, 0.3, 0.24]} labels={labels} />
+-    </group>
+-  );
+-}
+-
+-/* ================================ CUTTER ================================= */
+-/* Gantry over a table. X carriage traverses; routing spindle spins fast.      */
+-
+-function CutterUnit({ e, clip, labels, running, t, accent }: Ctx) {
+-  const carriage = useRef<THREE.Group>(null);
+-  useFrame(() => { if (carriage.current) carriage.current.position.x = (pingpong(t.current / 3) - 0.5) * 1.0; });
+-  return (
+-    <group>
+-      {/* table */}
+-      {([[-0.6, -0.4], [0.6, -0.4], [-0.6, 0.4], [0.6, 0.4]] as const).map(([x, z], i) => (
+-        <Box key={i} args={[0.08, 0.7, 0.08]} position={[x, 0.35, z]} mat={M.steel} />
+-      ))}
+-      <Panel args={[1.4, 0.06, 1.0]} position={[0, 0.72, 0]} color="#3a444f" clip={clip} radius={0.02} />
+-      {/* drywall sheet on the table */}
+-      <Box args={[1.15, 0.02, 0.8]} position={[0, 0.77, 0]} mat={M.board} />
+-      {/* gantry uprights + beam (explode up) */}
+-      <group position={[0, e * 0.35, 0]}>
+-        {[-0.66, 0.66].map((x, i) => <Box key={i} args={[0.08, 0.5, 0.1]} position={[x, 1.05, 0]} mat={{ color: accent, metalness: 0.5, roughness: 0.35 }} />)}
+-        <Box args={[1.5, 0.1, 0.12]} position={[0, 1.3, 0]} mat={{ color: accent, metalness: 0.5, roughness: 0.35 }} />
+-        {/* traversing carriage + spindle */}
+-        <group ref={carriage} position={[0, 1.24, 0]}>
+-          <Box args={[0.18, 0.14, 0.18]} position={[0, 0, 0]} mat={M.dark} />
+-          <mesh rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.052, 0.052, 0.1, 24, 1, true]} /><meshStandardMaterial {...M.copper} side={THREE.DoubleSide} /></mesh>
+-          <Cyl r={0.06} h={0.16} position={[0, -0.16, 0]} mat={M.dark} />
+-          {/* dust shroud */}
+-          <mesh position={[0, -0.28, 0]}><cylinderGeometry args={[0.07, 0.07, 0.08, 20, 1, true]} /><meshStandardMaterial {...M.dark} side={THREE.DoubleSide} /></mesh>
+-          {/* spinning bit */}
+-          <Spinner rpm={18000} axis="y" running={running}><Cyl r={0.012} h={0.14} position={[0, -0.3, 0]} mat={M.steel} /></Spinner>
+-          {labels && <Tag position={[0.14, 0, 0]} title="Routing spindle" sub="concept · ~18000 rpm" />}
+-        </group>
+-        {labels && <Tag position={[0.78, 0.06, 0]} title="X gantry servo" sub="concept · ballscrew" />}
+-      </group>
+-      {/* controller in a leg */}
+-      <Box args={[0.14, 0.24, 0.1]} position={[0.6, 0.35, 0.4]} mat={M.dark} clip={clip} />
+-      <EStop position={[-0.6, 0.78, 0.44]} labels={labels} />
+-    </group>
+-  );
+-}
+-
+-/* ================================ HANGER ================================= */
+-/* Tracked base + 2-DOF arm lifting a drywall sheet with a vacuum plate.        */
+-
+-function HangerUnit({ e, clip, labels, running, t, accent }: Ctx) {
+-  const shoulder = useRef<THREE.Group>(null);
+-  const elbow = useRef<THREE.Group>(null);
+-  useFrame(() => {
+-    const p = pingpong(t.current / 5);              // lift cycle
+-    if (shoulder.current) shoulder.current.rotation.x = -0.2 - p * 0.7;
+-    if (elbow.current) elbow.current.rotation.x = 0.5 + p * 0.6;
+-  });
+-  return (
+-    <group>
+-      {/* tracked base */}
+-      <Panel args={[0.8, 0.2, 0.62]} position={[0, 0.24, 0]} color={accent} clip={clip} />
+-      {[-0.44, 0.44].map((x, i) => <Box key={i} args={[0.1, 0.16, 0.66]} position={[x, 0.12, 0]} mat={M.rubber} />)}
+-      <group position={[0, 0.24 - e * 0.5, 0]}>
+-        <CorePower clip={clip} labels={labels} />
+-        <Cyl r={0.05} h={0.12} position={[0.24, 0, -0.14]} rotation={[Math.PI / 2, 0, 0]} mat={M.dark} />
+-        {labels && <Tag position={[0.3, 0, -0.14]} title="Vacuum pump" sub="concept · suction feed" />}
+-      </group>
+-      {/* shoulder column */}
+-      <Box args={[0.16, 0.34, 0.16]} position={[0, 0.5, -0.12]} mat={M.panel} clip={clip} />
+-      <group position={[0, 0.66, -0.12]}>
+-        <group ref={shoulder}>
+-          <Servo running={running} labels={labels} tag="Shoulder" tagPos={[0.14, 0, 0]} />
+-          <Box args={[0.09, 0.5, 0.09]} position={[0, 0.25, 0.02]} mat={M.panel} />
+-          <group ref={elbow} position={[0, 0.5, 0.02]}>
+-            <Servo running={running} />
+-            <Box args={[0.08, 0.34, 0.08]} position={[0, 0, 0.17]} rotation={[Math.PI / 2, 0, 0]} mat={M.panel} />
+-            {/* vacuum plate + sheet */}
+-            <group position={[0, 0, 0.34]}>
+-              <Box args={[0.32, 0.26, 0.05]} mat={{ color: accent, metalness: 0.4, roughness: 0.45 }} />
+-              {([[-0.1, -0.08], [0.1, -0.08], [-0.1, 0.08], [0.1, 0.08]] as const).map(([x, y], i) => (
+-                <Cyl key={i} r={0.04} h={0.05} position={[x, y, 0.05]} rotation={[Math.PI / 2, 0, 0]} mat={M.rubber} />
+-              ))}
+-              <Box args={[0.5, 0.7, 0.016]} position={[0, 0, 0.08]} mat={M.board} />
+-              {labels && <Tag position={[0.28, 0, 0.05]} title="Vacuum gripper" sub="concept · 4× cup" />}
+-            </group>
+-          </group>
+-        </group>
+-      </group>
+-      <EStop position={[0.32, 0.4, 0.28]} labels={labels} />
+-    </group>
+-  );
+-}
+-
+-/* ================================ FINISHER =============================== */
+-/* Tracked base + lift mast + arm + sanding head sweeping a wall.               */
+-
+-function FinisherUnit({ e, clip, labels, running, t, accent }: Ctx) {
+-  const carriage = useRef<THREE.Group>(null);
+-  const arm = useRef<THREE.Group>(null);
+-  useFrame(() => {
+-    if (carriage.current) carriage.current.position.y = 0.5 + pingpong(t.current / 6) * 0.7;  // mast height (rows)
+-    if (arm.current) arm.current.rotation.y = Math.sin(t.current * 1.4) * 0.5;                 // sweep across
+-  });
+-  return (
+-    <group>
+-      {/* wall being finished */}
+-      <Box args={[1.4, 1.6, 0.04]} position={[-0.75, 0.9, 0]} rotation={[0, Math.PI / 2, 0]} mat={M.board} />
+-      {/* tracked base */}
+-      <Panel args={[0.8, 0.2, 0.6]} position={[0, 0.24, 0]} color={accent} clip={clip} />
+-      {[-0.44, 0.44].map((x, i) => <Box key={i} args={[0.1, 0.16, 0.64]} position={[x, 0.12, 0]} mat={M.rubber} />)}
+-      <group position={[0, 0.24 - e * 0.5, 0]}>
+-        <CorePower clip={clip} labels={labels} />
+-        {labels && <Tag position={[0, -0.12, 0.22]} title="Dust capture" sub="concept · ~99%" />}
+-      </group>
+-      {/* lift mast */}
+-      <Box args={[0.14, 1.4, 0.14]} position={[0, 1.0, -0.1]} mat={M.panel} clip={clip} />
+-      <Cyl r={0.02} h={1.3} position={[0, 1.0, -0.1]} mat={M.steel} />
+-      {/* carriage rides the mast */}
+-      <group ref={carriage} position={[0, 0.5, -0.02]}>
+-        <Box args={[0.2, 0.14, 0.14]} mat={M.dark} />
+-        <group ref={arm}>
+-          <Servo running={running} labels={labels} tag="Reach servo" tagPos={[0.14, 0, 0]} />
+-          <Box args={[0.07, 0.07, 0.34]} position={[0, 0, 0.2]} mat={M.panel} />
+-          {/* sanding head */}
+-          <group position={[0, 0, 0.4]}>
+-            <Box args={[0.22, 0.18, 0.14]} mat={{ color: accent, metalness: 0.5, roughness: 0.4 }} />
+-            <mesh rotation={[Math.PI / 2, 0, 0]}><cylinderGeometry args={[0.05, 0.05, 0.1, 24, 1, true]} /><meshStandardMaterial {...M.copper} side={THREE.DoubleSide} /></mesh>
+-            <Spinner rpm={2800} axis="z" running={running}>
+-              <mesh position={[0, 0, 0.1]} rotation={[Math.PI / 2, 0, 0]} castShadow><cylinderGeometry args={[0.1, 0.1, 0.016, 40]} /><meshStandardMaterial color="#5a4632" roughness={0.98} /></mesh>
+-            </Spinner>
+-            {labels && <Tag position={[0.16, 0.04, 0.1]} title="Sanding head" sub="concept · BLDC ~2800 rpm" />}
+-          </group>
+-        </group>
+-      </group>
+-      <EStop position={[0.34, 0.4, 0.26]} labels={labels} />
+-    </group>
+-  );
+-}
+-
+-/* ================================== QA =================================== */
+-/* Compact base + sensor mast; camera / LED / spinning lidar; scans a wall.     */
+-
+-function QAUnit({ e, clip, labels, running, t, accent }: Ctx) {
+-  const root = useRef<THREE.Group>(null);
+-  const head = useRef<THREE.Group>(null);
+-  const spin = useRef(0);
+-  useFrame(() => {
+-    if (root.current) root.current.position.x = (pingpong(t.current / 6) - 0.5) * 1.1;  // creep along wall
+-    if (head.current) head.current.rotation.y = Math.sin(t.current * 1.1) * 0.4;         // pan
+-    spin.current = (t.current * 3) % TAU;
+-  });
+-  return (
+-    <group>
+-      {/* wall */}
+-      <Box args={[1.6, 1.5, 0.04]} position={[0, 0.85, -0.7]} mat={M.board} />
+-      <group ref={root}>
+-        {/* compact base */}
+-        <Panel args={[0.6, 0.16, 0.5]} position={[0, 0.18, 0]} color={accent} clip={clip} />
+-        {([[-0.26, -0.2], [0.26, -0.2], [-0.26, 0.2], [0.26, 0.2]] as const).map(([x, z], i) => (
+-          <Wheel key={i} position={[x, 0.09, z]} r={0.08} spin={spin} />
+-        ))}
+-        <group position={[0, 0.18 - e * 0.45, 0]}>
+-          <CorePower clip={clip} labels={labels} />
+-          <Cyl r={0.045} h={0.06} position={[0.22, 0.02, 0.16]} mat={M.dark} />
+-          {labels && <Tag position={[0.3, 0.02, 0.16]} title="Lidar motor" sub="concept · scan drive" />}
+-        </group>
+-        {/* sensor mast */}
+-        <Box args={[0.1, 0.9, 0.1]} position={[0, 0.7, 0]} mat={M.panel} clip={clip} />
+-        {/* head */}
+-        <group ref={head} position={[0, 1.15 + e * 0.4, 0.02]}>
+-          <Panel args={[0.24, 0.14, 0.12]} color={accent} radius={0.02} />
+-          <Cyl r={0.035} h={0.04} position={[0, 0, 0.07]} rotation={[Math.PI / 2, 0, 0]} mat={M.glass} />
+-          <mesh position={[0, 0, 0.06]}><torusGeometry args={[0.06, 0.008, 8, 28]} /><meshStandardMaterial color="#eaf4ff" emissive="#cfe8ff" emissiveIntensity={1.4} toneMapped={false} /></mesh>
+-          <group position={[0, 0.11, 0]}>
+-            <Spinner rpm={300} axis="y" running={running}><Cyl r={0.03} h={0.035} mat={M.dark} /><Box args={[0.015, 0.008, 0.05]} position={[0.025, 0, 0]} mat={M.steel} /></Spinner>
+-          </group>
+-          {labels && <Tag position={[0.15, 0.02, 0.06]} title="Vision cluster" sub="concept · camera · LED · lidar" />}
+-        </group>
+-      </group>
+-    </group>
+-  );
+-}
+-
+-/* ================================= root ================================== */
+-
+-export default function RobotInternals({ robot, accent, explode, cutaway, clipZ, labels, running }: InternalsProps) {
+-  const gl = useThree((s) => s.gl);
+-  gl.localClippingEnabled = true;
+-  const clip = useMemo<THREE.Plane[]>(
+-    () => (cutaway ? [new THREE.Plane(new THREE.Vector3(0, 0, -1), clipZ)] : []),
+-    [cutaway, clipZ],
+-  );
+-  const t = useRef(0);
+-  useFrame((_, dt) => { if (running) t.current += dt; });
+-
+-  const ctx: Ctx = { e: explode, clip, labels, running, t, accent };
+-  return (
+-    <group>
+-      <Environment preset="warehouse" environmentIntensity={0.75} />
+-      {robot === "amr" && <AMRUnit {...ctx} />}
+-      {robot === "cutter" && <CutterUnit {...ctx} />}
+-      {robot === "hanger" && <HangerUnit {...ctx} />}
+-      {robot === "finisher" && <FinisherUnit {...ctx} />}
+-      {robot === "qa" && <QAUnit {...ctx} />}
+-    </group>
+-  );
+-}
