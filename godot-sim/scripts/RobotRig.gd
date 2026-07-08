@@ -9,6 +9,10 @@ extends Node3D
 
 const Rotor := preload("res://scripts/Rotor.gd")
 
+## Which unit to build: "finisher" | "hanger" | "cutter" | "amr" | "qa".
+## Shared platform, per-robot tool head — mirrors the web inspection view.
+@export var robot_id: String = "finisher"
+
 var _running := true
 
 func _ready() -> void:
@@ -54,28 +58,55 @@ func _build() -> void:
 	column.add_child(_cyl(0.022, 0.86, Vector3.ZERO, Color(0.66, 0.7, 0.75)))  # ball screw
 	add_child(column)
 
-	var shoulder := _servo_joint("Shoulder", Vector3(0, 1.15, -0.1), Vector3.UP, 0.35)
-	add_child(shoulder)
-
-	var elbow := _servo_joint("Elbow", Vector3(0, 1.15, 0.08), Vector3.BACK, 0.45)
-	add_child(elbow)
-
-	var ee := _assembly("EndEffector", Vector3.BACK, 1.0)
-	ee.position = Vector3(0, 1.15, 0.42)
-	ee.add_child(_box(Vector3(0.26, 0.2, 0.16), Vector3.ZERO, Color(0.96, 0.62, 0.04)))
-	var disc := Rotor.new()
-	disc.name = "SanderDisc"
-	disc.rpm = 2800.0
-	disc.axis = Vector3.FORWARD
-	disc.position = Vector3(0, 0, 0.12)
-	disc.add_child(_disc(0.11, 0.016, Color(0.35, 0.27, 0.19)))
-	ee.add_child(disc)
-	add_child(ee)
+	if robot_id == "amr":
+		# no arm — lift fork on the base
+		var fork := _assembly("LiftFork", Vector3.BACK, 0.5)
+		fork.position = Vector3(0, 0.34, 0.42)
+		fork.add_child(_box(Vector3(0.5, 0.1, 0.1), Vector3.ZERO, Color(0.22, 0.74, 0.98)))
+		for x in [-0.16, 0.16]:
+			fork.add_child(_box(Vector3(0.06, 0.03, 0.44), Vector3(x, -0.05, 0.22), Color(0.67, 0.7, 0.75)))
+		add_child(fork)
+	else:
+		var shoulder := _servo_joint("Shoulder", Vector3(0, 1.15, -0.1), Vector3.UP, 0.35)
+		add_child(shoulder)
+		var elbow := _servo_joint("Elbow", Vector3(0, 1.15, 0.08), Vector3.BACK, 0.45)
+		add_child(elbow)
+		add_child(_tool_head())
 
 	var estop := _assembly("EStop", Vector3.RIGHT, 0.4)
 	estop.position = Vector3(0.34, 0.34, 0.2)
 	estop.add_child(_cyl(0.045, 0.03, Vector3.ZERO, Color(0.88, 0.11, 0.18)))
 	add_child(estop)
+
+## Per-robot tool head. Shared arm, different end effector — mirrors the web view.
+func _tool_head() -> Node3D:
+	var ee := _assembly("EndEffector", Vector3.BACK, 1.0)
+	ee.position = Vector3(0, 1.15, 0.42)
+	match robot_id:
+		"cutter":
+			ee.add_child(_box(Vector3(0.2, 0.24, 0.16), Vector3.ZERO, Color(0.65, 0.55, 0.98)))
+			var bit := Rotor.new()
+			bit.name = "RoutingBit"; bit.rpm = 18000.0; bit.axis = Vector3.FORWARD
+			bit.position = Vector3(0, 0, 0.16)
+			bit.add_child(_cyl(0.012, 0.1, Vector3.ZERO, Color(0.67, 0.7, 0.75), Vector3(90, 0, 0)))
+			ee.add_child(bit)
+		"hanger":
+			ee.add_child(_box(Vector3(0.28, 0.24, 0.06), Vector3.ZERO, Color(0.96, 0.62, 0.04)))
+			for x in [-0.09, 0.09]:
+				for y in [-0.07, 0.07]:
+					ee.add_child(_cyl(0.04, 0.05, Vector3(x, y, 0.05), Color(0.07, 0.09, 0.11), Vector3(90, 0, 0)))
+		"qa":
+			ee.add_child(_box(Vector3(0.24, 0.14, 0.12), Vector3.ZERO, Color(0.2, 0.83, 0.6)))
+			ee.add_child(_cyl(0.035, 0.04, Vector3(0, 0, 0.07), Color(0.04, 0.1, 0.16), Vector3(90, 0, 0)))
+		_:  # finisher
+			ee.add_child(_box(Vector3(0.26, 0.2, 0.16), Vector3.ZERO, Color(0.98, 0.45, 0.09)))
+			var disc := Rotor.new()
+			disc.name = "SanderDisc"; disc.rpm = 2800.0; disc.axis = Vector3.FORWARD
+			disc.position = Vector3(0, 0, 0.12)
+			disc.add_child(_disc(0.11, 0.016, Color(0.35, 0.27, 0.19)))
+			ee.add_child(disc)
+	return ee
+
 
 func _servo_joint(nm: String, pos: Vector3, dir: Vector3, mag: float) -> Node3D:
 	var a := _assembly(nm, dir, mag)
