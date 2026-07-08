@@ -1,0 +1,24 @@
+; DryForge Pro Simulator — Godot 4.3+ project
+; Concept / design-intent visualization. Not a validated digital twin.
+
+config_version=5
+
+[application]
+config/name="DryForge Pro Simulator"
+run/main_scene="res://scenes/Main.tscn"
+config/features=PackedStringArray("4.3", "Forward Plus")
+config/icon="res://icon.svg"
+
+[display]
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+
+[rendering]
+renderer/rendering_method="forward_plus"
+environment/defaults/default_clear_color=Color(0.043, 0.07, 0.125, 1)
+anti_aliasing/quality/msaa_3d=2
+
+[web]
+; enable SharedArrayBuffer headers when hosting the HTML5 export (see integration notes)
+progressive_web_app/enabled=true
