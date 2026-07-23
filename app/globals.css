@@ -285,6 +285,22 @@ a:focus-visible {
   margin-left: auto;
 }
 
+/* Autonomous Finishing Showcase — horizontal swipe rail */
+.df-rail {
+  scrollbar-width: none;                 /* Firefox */
+  -ms-overflow-style: none;              /* IE/Edge */
+  -webkit-overflow-scrolling: touch;     /* momentum on iOS */
+  scroll-padding-left: 1.5rem;
+}
+
+.df-rail::-webkit-scrollbar {
+  display: none;                         /* Chrome/Safari */
+}
+
+.df-snap {
+  scroll-snap-align: start;
+}
+
 /* Responsive tweaks */
 @media (max-width: 640px) {
   .h1 {

@@ -2,6 +2,7 @@ import Header from "./components/Header";
 import Footer from "./components/Footer";
 import FloatingChatbot from "./components/FloatingChatbot";
 import ROICalculator from "./components/ROICalculator";
+import FinishingShowcase from "./components/FinishingShowcase";
 import {
   Zap, Clock, TrendingUp, Users, Shield, ArrowRight, CheckCircle, Target, Mail
 } from "lucide-react";
@@ -104,6 +105,9 @@ export default function DryForgeHome() {
           </div>
         </div>
       </section>
+
+      {/* AUTONOMOUS FINISHING SYSTEMS SHOWCASE */}
+      <FinishingShowcase />
 
       {/* PILOT STRUCTURE */}
       <section className="section bg-white border-y">
